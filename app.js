@@ -2030,6 +2030,48 @@ function initNavSlide() {
   requestAnimationFrame(() => positionNavLens(false));
 }
 
+/* ------------------------- liquid-glass nav: dynamic specular -------------------------
+   Real Liquid Glass catches light that moves. The nav sheen (the radial
+   highlight on .bottom-nav-glass::before) follows the pointer across the
+   bar and, on Android, the device tilt — both rAF-throttled through
+   --sheen-x / --sheen-y (0–100) set on #bottomNav. No tilt prompt is
+   ever shown: if the browser gates orientation behind a permission
+   (iOS Safari), tilt is skipped and pointer tracking still works.
+   Respects prefers-reduced-motion. */
+function initNavSheen() {
+  const nav = $('bottomNav');
+  if (!nav || !IS_ANDROID) return;
+  if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  let raf = 0;
+  let sheenX = 50, sheenY = 28;
+  const apply = () => {
+    raf = 0;
+    nav.style.setProperty('--sheen-x', sheenX.toFixed(1));
+    nav.style.setProperty('--sheen-y', sheenY.toFixed(1));
+  };
+  const queue = () => { if (!raf) raf = requestAnimationFrame(apply); };
+  nav.addEventListener('pointermove', (e) => {
+    const r = nav.getBoundingClientRect();
+    if (!r.width || !r.height) return;
+    sheenX = Math.min(100, Math.max(0, ((e.clientX - r.left) / r.width) * 100));
+    sheenY = Math.min(100, Math.max(0, ((e.clientY - r.top) / r.height) * 100));
+    queue();
+  });
+  // Device tilt: Android Chrome fires deviceorientation with no
+  // permission prompt. If the browser requires a permission request,
+  // skip tilt entirely — never prompt.
+  if (typeof DeviceOrientationEvent !== 'undefined' &&
+      typeof DeviceOrientationEvent.requestPermission !== 'function') {
+    window.addEventListener('deviceorientation', (e) => {
+      if (e.gamma == null || e.beta == null) return;
+      // gamma: left/right tilt; beta is ~90 when the phone is held upright.
+      sheenX = Math.min(100, Math.max(0, 50 + (e.gamma / 45) * 50));
+      sheenY = Math.min(100, Math.max(0, 50 + ((e.beta - 90) / 45) * 35));
+      queue();
+    });
+  }
+}
+
 /* ------------------------- diary ------------------------- */
 let editorMood = '😊';
 
@@ -3103,8 +3145,9 @@ function initUI() {
     persist();
   });
 
-  // Liquid-glass nav: sliding lens
+  // Liquid-glass nav: sliding lens + dynamic specular sheen
   initNavSlide();
+  initNavSheen();
 
   $('lookupBtn').addEventListener('click', async () => {
     const ref = $('verseRef').value.trim();

@@ -679,9 +679,10 @@ body[data-textsize="compact"] .big-number { font-size: 28px; }
 /* ---------- The "✨ MORE" strip fix ----------
    The floating pill leaves a gap to the viewport bottom where page content
    (the old Home "More" card) showed through as a clipped strip. On
-   Android a fixed gradient+blur skirt fills that gap so nothing readable
+   Android a fixed gradient fade fills that gap so nothing readable
    can ever appear below the nav, and the app's bottom padding clears the
-   whole nav + skirt with margin to spare. */
+   whole nav + fade with margin to spare. Deliberately NOT blurred:
+   a blurred skirt under a glass bar is glass-on-glass. */
 .nav-scrim { display: none; }
 html[data-platform="android"] .nav-scrim {
   display: block;
@@ -690,18 +691,16 @@ html[data-platform="android"] .nav-scrim {
   z-index: 49; pointer-events: none;
   background: linear-gradient(180deg,
     transparent 0%,
-    rgba(245, 240, 255, 0.6) 45%,
-    rgba(245, 240, 255, 0.92) 100%);
-  -webkit-backdrop-filter: blur(14px) saturate(160%);
-  backdrop-filter: blur(14px) saturate(160%);
+    rgba(245, 240, 255, 0.55) 45%,
+    rgba(245, 240, 255, 0.9) 100%);
   -webkit-mask-image: linear-gradient(180deg, transparent 0%, #000 45%);
   mask-image: linear-gradient(180deg, transparent 0%, #000 45%);
 }
 html[data-platform="android"][data-theme="dark"] .nav-scrim {
   background: linear-gradient(180deg,
     transparent 0%,
-    rgba(29, 25, 38, 0.55) 45%,
-    rgba(29, 25, 38, 0.88) 100%);
+    rgba(29, 25, 38, 0.5) 45%,
+    rgba(29, 25, 38, 0.85) 100%);
 }
 
 /* ---------- Android nav geometry ---------- */
@@ -720,24 +719,50 @@ html[data-platform="android"] .tab-btn {
 html[data-platform="android"] .tab-btn:not(.active) { opacity: 0.72; }
 html[data-platform="android"] .tab-btn.active { opacity: 1; }
 
-/* ---------- Android liquid glass: the nav ---------- */
+/* ---------- Android liquid glass: the nav ----------
+   Real Liquid Glass is displacement-first, blur-second: the rim bends
+   the backdrop through the #vgGlassRefract SVG filter (Chrome/WebView —
+   see the @supports block below), the fill is thin so the lens does the
+   work, and the blur is light (12px) so the rim stays crisper than the
+   interior. The specular highlight is dynamic: JS moves --sheen-x /
+   --sheen-y with the pointer and device tilt. */
 html[data-platform="android"] .bottom-nav-glass {
-  -webkit-backdrop-filter: blur(28px) saturate(220%) brightness(1.12);
-  backdrop-filter: blur(28px) saturate(220%) brightness(1.12);
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.34), rgba(255, 255, 255, 0.14));
-  border: 1px solid rgba(255, 255, 255, 0.5);
+  -webkit-backdrop-filter: blur(12px) saturate(180%) brightness(1.08);
+  backdrop-filter: blur(12px) saturate(180%) brightness(1.08);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.08));
+  border: 1px solid rgba(255, 255, 255, 0.35);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.6),
-    inset 0 -1px 0 rgba(255, 255, 255, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.45),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.10),
     0 14px 36px rgba(0, 0, 0, 0.35);
 }
 html[data-platform="android"][data-theme="dark"] .bottom-nav-glass {
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0.09));
-  background-color: rgba(88, 70, 140, 0.36);
-  border-color: rgba(255, 255, 255, 0.38);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.10), rgba(255, 255, 255, 0.05));
+  background-color: rgba(88, 70, 140, 0.18);
+  border-color: rgba(255, 255, 255, 0.28);
 }
+/* Dynamic specular: a soft radial highlight whose center follows the
+   pointer / tilt (--sheen-x / --sheen-y are 0–100, set on #bottomNav by
+   JS; defaults put it top-center). The faint diagonal band underneath
+   is only the static base — the radial is what moves. */
 html[data-platform="android"] .bottom-nav-glass::before {
-  background: linear-gradient(115deg, transparent 30%, rgba(255, 255, 255, 0.42) 46%, rgba(255, 255, 255, 0.12) 54%, transparent 66%);
+  background:
+    radial-gradient(150px 70px at calc(var(--sheen-x, 50) * 1%) calc(var(--sheen-y, 28) * 1%), rgba(255, 255, 255, 0.34) 0%, rgba(255, 255, 255, 0.10) 45%, transparent 70%),
+    linear-gradient(115deg, transparent 30%, rgba(255, 255, 255, 0.14) 46%, transparent 66%);
+}
+html[data-platform="android"][data-theme="dark"] .bottom-nav-glass::before {
+  background:
+    radial-gradient(150px 70px at calc(var(--sheen-x, 50) * 1%) calc(var(--sheen-y, 28) * 1%), rgba(255, 255, 255, 0.26) 0%, rgba(255, 255, 255, 0.08) 45%, transparent 70%),
+    linear-gradient(115deg, transparent 30%, rgba(255, 255, 255, 0.10) 46%, transparent 66%);
+}
+/* Refraction: where the browser can run an SVG filter as a
+   backdrop-filter, bend the backdrop first, then blur it. Everywhere
+   else the plain-blur rule above is the fallback. */
+@supports (backdrop-filter: url("#vgGlassRefract")) {
+  html[data-platform="android"] .bottom-nav-glass {
+    -webkit-backdrop-filter: url("#vgGlassRefract") blur(12px) saturate(180%) brightness(1.08);
+    backdrop-filter: url("#vgGlassRefract") blur(12px) saturate(180%) brightness(1.08);
+  }
 }
 /* Stronger sliding lens = the active tab's glassy pill highlight. */
 html[data-platform="android"] .nav-lens {
@@ -758,38 +783,12 @@ html[data-platform="android"] .quick-add-btn {
     inset 0 1px 0 rgba(255, 255, 255, 0.65);
 }
 
-/* ---------- Android liquid glass: cards ---------- */
-html[data-platform="android"] .card,
-html[data-platform="android"] .note-card,
-html[data-platform="android"] .tag-chip,
-html[data-platform="android"] .bible-switch-btn,
-html[data-platform="android"] .more-item {
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0.45));
-  -webkit-backdrop-filter: blur(18px) saturate(180%);
-  backdrop-filter: blur(18px) saturate(180%);
-  border: 1px solid rgba(255, 255, 255, 0.65);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.7),
-    0 10px 28px rgba(60, 30, 120, 0.14);
-}
-html[data-platform="android"][data-theme="dark"] .card,
-html[data-platform="android"][data-theme="dark"] .note-card,
-html[data-platform="android"][data-theme="dark"] .tag-chip,
-html[data-platform="android"][data-theme="dark"] .bible-switch-btn,
-html[data-platform="android"][data-theme="dark"] .more-item {
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.05));
-  background-color: rgba(43, 37, 64, 0.55);
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.22),
-    0 10px 28px rgba(0, 0, 0, 0.35);
-}
-/* Hero + verse-of-the-day get the deepest card glass. */
-html[data-platform="android"] .hero-card,
-html[data-platform="android"] .votd-card {
-  -webkit-backdrop-filter: blur(22px) saturate(200%);
-  backdrop-filter: blur(22px) saturate(200%);
-}
+/* ---------- Android: content is SOLID, not glass ----------
+   Liquid Glass belongs only on the navigation/control layer floating
+   above content. Cards, note cards, tag chips, the Bible switch and
+   More items go back to the theme's solid surfaces (the base rules
+   above) — glass on content muddies the hierarchy and turns to noise,
+   and the verse-of-the-day card had long-form text sitting on glass. */
 /* Slightly denser Android spacing. */
 html[data-platform="android"] .card { padding: 18px; margin-top: 12px; }
 html[data-platform="android"] .row-2 { gap: 12px; }
@@ -816,7 +815,6 @@ html[data-platform="android"] .more-sheet::before {
   background: var(--border);
   margin: -6px auto 12px;
 }
-html[data-platform="android"] .more-item { background-color: transparent; }
 
 /* ---------- Android pressed states (Material-style) ---------- */
 html[data-platform="android"] .btn { -webkit-tap-highlight-color: transparent; }
@@ -826,3 +824,33 @@ html[data-platform="android"] .icon-btn:active { transform: scale(0.9); }
 html[data-platform="android"] .home-link-card:active { transform: scale(0.96); }
 /* Toast clears the taller Android nav + scrim. */
 html[data-platform="android"] .toast { bottom: 128px; }
+
+/* ---------- Accessibility: transparency & motion ----------
+   Reduce Transparency: glass becomes a near-opaque solid so text on
+   and under the nav stays readable. Reduce Motion: the lens/glow stop
+   animating, and JS skips the sheen/tilt tracking entirely. */
+@media (prefers-reduced-transparency: reduce) {
+  html[data-platform="android"] .bottom-nav-glass {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    background: var(--card);
+    border-color: var(--border);
+  }
+  html[data-platform="android"] .bottom-nav-glass::before { display: none; }
+  html[data-platform="android"] .nav-lens {
+    background: var(--accent-soft);
+    border-color: transparent;
+    box-shadow: none;
+  }
+  html[data-platform="android"] .modal-card,
+  html[data-platform="android"] .glass-card {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    background: var(--bg);
+    border-color: var(--border);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  html[data-platform="android"] .nav-lens,
+  html[data-platform="android"] .nav-glow { transition: none; }
+}
