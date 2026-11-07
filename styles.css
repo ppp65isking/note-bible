@@ -141,6 +141,14 @@ input[type="color"] { padding: 4px; height: 44px; cursor: pointer; }
 .auth-sub { color: var(--muted); margin: 0 0 10px; }
 .auth-card .field-label { text-align: left; }
 .auth-error { color: #dc2626; font-weight: 600; font-size: 14px; }
+.auth-hint { color: var(--muted); font-size: 12.5px; margin: 8px 0 0; }
+.auth-note {
+  background: var(--accent-soft); border: 1px solid var(--border);
+  border-radius: 16px; padding: 12px 14px; margin-top: 12px; text-align: left;
+  font-size: 14px; line-height: 1.5;
+}
+.auth-note p { margin: 0 0 10px; }
+.auth-note .btn-block { margin-top: 8px; }
 
 /* ---------- App header ---------- */
 #app { max-width: 720px; margin: 0 auto; padding: 0 16px calc(148px + env(safe-area-inset-bottom, 0px)); }

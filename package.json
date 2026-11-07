@@ -5,6 +5,7 @@
   "private": true,
   "scripts": {
     "build:www": "node scripts/build-www.mjs",
+    "assets:generate": "node scripts/prepare-assets.mjs && npx @capacitor/assets generate --android --iconBackgroundColor '#a78bfa' --splashBackgroundColor '#a78bfa'",
     "sync": "npm run build:www && npx cap sync android",
     "test": "node tests/verse-fetch.test.mjs"
   },
@@ -13,6 +14,7 @@
   "license": "ISC",
   "dependencies": {
     "@aparajita/capacitor-biometric-auth": "^10.0.0",
+    "@capacitor-firebase/authentication": "^8.6.0",
     "@capacitor/android": "^8.6.0",
     "@capacitor/core": "^8.6.0",
     "@capacitor/haptics": "^8.0.2",
@@ -20,6 +22,7 @@
     "@capacitor/status-bar": "^8.0.4"
   },
   "devDependencies": {
+    "@capacitor/assets": "^4.0.0",
     "@capacitor/cli": "^8.6.0"
   }
 }

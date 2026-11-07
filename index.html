@@ -52,6 +52,15 @@
 
       <button id="authSubmit" class="btn btn-primary btn-block">Sign in</button>
       <button id="googleBtn" class="btn btn-block">🔍 Continue with Google</button>
+      <p id="standaloneHint" class="auth-hint hidden">On the installed app, Google signs in through your browser.</p>
+      <!-- Shown in the installed app when Google can't sign in in-app:
+           FedCM unavailable (or iOS, where FedCM doesn't exist). -->
+      <div id="browserSignin" class="auth-note hidden">
+        <p id="browserSigninText"></p>
+        <button id="browserSigninOpen" class="btn btn-primary btn-block">Open in browser to sign in</button>
+        <button id="browserSigninCheck" class="btn btn-block hidden">I signed in — check again</button>
+        <button id="browserSigninHide" class="link-btn">Use email instead</button>
+      </div>
       <button id="authToggle" class="link-btn">New here? Create an account</button>
       <button id="localBtn" class="link-btn">Continue without an account (local only)</button>
     </div>
