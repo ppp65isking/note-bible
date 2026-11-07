@@ -53,6 +53,8 @@ if (FIREBASE_READY) {
 /* ------------------------- constants ------------------------- */
 const LS_KEY = 'verseGarden.v1';
 const LS_VOTD = 'verseGarden.votd.v1';
+const LS_PIN = 'verseGarden.pin.v1';        // {salt, hash} — PIN hash only, never the PIN itself
+const LS_GIPHY = 'verseGarden.giphyKey.v1'; // GIPHY API key, this device only — never synced/exported
 
 const THEMES = {
   lavender: { name: 'Lavender 💜', accent: '#a78bfa', soft: '#ede9fe', bg: '#f5f0ff' },
@@ -75,6 +77,24 @@ const BACKGROUNDS = {
   none:     { name: 'Plain',    emoji: '⬜' }
 };
 const DARK = { bg: '#1d1926', card: '#2b2540' };
+
+/* Diary moods + cover backgrounds. Cover backgrounds are diary-only
+   (stars, sunshine, midnight…); `css` is used verbatim as the cover's
+   background, so gradients and layered patterns both work. */
+const DIARY_MOODS = ['😊', '😌', '🙏', '💜', '😢', '🎉', '😴', '🌸'];
+const COVER_BGS = {
+  lavenderDream: { name: 'Lavender dream', css: 'linear-gradient(160deg,#c4b5fd,#a78bfa 45%,#7c3aed)' },
+  peachSunset: { name: 'Peach sunset', css: 'linear-gradient(160deg,#fdba74,#fb923c 45%,#f472b6)' },
+  mintMeadow: { name: 'Mint meadow', css: 'linear-gradient(160deg,#6ee7b7,#10b981 45%,#0d9488)' },
+  roseGarden: { name: 'Rose garden', css: 'linear-gradient(160deg,#f9a8d4,#f472b6 45%,#be185d)' },
+  oceanWaves: { name: 'Ocean waves', css: 'linear-gradient(160deg,#7dd3fc,#38bdf8 45%,#0369a1)' },
+  sunshine: { name: 'Sunshine', css: 'linear-gradient(160deg,#fde68a,#fbbf24 45%,#f59e0b)' },
+  honeyGlow: { name: 'Honey glow', css: 'linear-gradient(160deg,#fde68a,#f59e0b 45%,#b45309)' },
+  midnight: { name: 'Midnight stars', css: 'radial-gradient(circle at 20% 20%, rgba(255,255,255,.8) 0 2px, transparent 3px), radial-gradient(circle at 70% 28%, rgba(255,255,255,.7) 0 2px, transparent 3px), radial-gradient(circle at 40% 62%, rgba(255,255,255,.8) 0 2px, transparent 3px), radial-gradient(circle at 85% 72%, rgba(255,255,255,.6) 0 2px, transparent 3px), radial-gradient(circle at 55% 88%, rgba(255,255,255,.7) 0 2px, transparent 3px), linear-gradient(160deg,#312e81,#1e1b4b 60%,#0f0a2e)' }
+};
+function defaultCover() {
+  return { bg: 'lavenderDream', title: 'My Diary', glitter: { on: false, color: '#fde047' }, stickers: [] };
+}
 
 /* 16 built-in SVG stickers (inline, no network needed) */
 const STICKERS = [
@@ -195,10 +215,12 @@ const defaultState = () => ({
   notes: [],       // {id,title,ref,text,thoughts,tags[],sticker,starred,createdAt,updatedAt}
   prayers: [],     // {id,text,answered,createdAt}
   gratitude: [],   // {id,text,createdAt}
+  diary: [],       // {id,date,title,text,mood,createdAt,updatedAt}
+  diaryCover: defaultCover(), // {bg,title,glitter:{on,color},stickers:[{kind,id,src,x,y,size,rot}]}
   activity: {},    // {'YYYY-MM-DD': true}
   plan: { id: 'john30', done: { john30: {}, fresh7: {}, proverbs31: {}, psalms14: {} } },
   profile: { name: '', setupDone: false },
-  theme: { preset: 'lavender', customAccent: '', font: 'Quicksand', dark: false, background: 'dots' }
+  theme: { preset: 'lavender', customAccent: '', font: 'Quicksand', dark: false, background: 'dots', textSize: 'cozy' }
 });
 let state = defaultState();
 
@@ -223,6 +245,17 @@ function migrateState(parsed) {
   }
   if (!PLANS[next.plan.id]) next.plan.id = 'john30';
   next.profile = Object.assign(defaultState().profile, parsed.profile || {});
+  // diary (new in this version) — older saves just start empty
+  if (!Array.isArray(next.diary)) next.diary = [];
+  if (!next.diaryCover || typeof next.diaryCover !== 'object') next.diaryCover = defaultCover();
+  else {
+    next.diaryCover = Object.assign(defaultCover(), next.diaryCover);
+    if (!Array.isArray(next.diaryCover.stickers)) next.diaryCover.stickers = [];
+    if (!COVER_BGS[next.diaryCover.bg]) next.diaryCover.bg = 'lavenderDream';
+    if (!next.diaryCover.glitter || typeof next.diaryCover.glitter !== 'object')
+      next.diaryCover.glitter = { on: false, color: '#fde047' };
+  }
+  if (!['cozy', 'compact'].includes(next.theme.textSize)) next.theme.textSize = 'cozy';
   return next;
 }
 
@@ -264,13 +297,13 @@ async function syncToFirestore() {
   if (!db || !firebaseUser) return;
   try {
     const batch = db.batch();
-    for (const name of ['notes', 'prayers', 'gratitude']) {
+    for (const name of ['notes', 'prayers', 'gratitude', 'diary']) {
       for (const item of state[name]) {
         batch.set(fsCol(name).doc(item.id), item, { merge: true });
       }
     }
     batch.set(db.collection('users').doc(firebaseUser.uid).collection('meta').doc('settings'),
-      { theme: state.theme, activity: state.activity, plan: state.plan, profile: state.profile }, { merge: true });
+      { theme: state.theme, activity: state.activity, plan: state.plan, profile: state.profile, diaryCover: state.diaryCover }, { merge: true });
     await batch.commit();
   } catch (e) { console.warn('Firestore sync failed:', e); }
 }
@@ -281,20 +314,26 @@ async function deleteFromFirestore(name, id) {
 async function loadFromFirestore() {
   if (!db || !firebaseUser) return;
   try {
-    const [n, p, g, meta] = await Promise.all([
-      fsCol('notes').get(), fsCol('prayers').get(), fsCol('gratitude').get(),
+    const [n, p, g, d, meta] = await Promise.all([
+      fsCol('notes').get(), fsCol('prayers').get(), fsCol('gratitude').get(), fsCol('diary').get(),
       db.collection('users').doc(firebaseUser.uid).collection('meta').doc('settings').get()
     ]);
     const pick = (snap) => snap.docs.map((d) => d.data());
-    const remote = { notes: pick(n), prayers: pick(p), gratitude: pick(g) };
+    const remote = { notes: pick(n), prayers: pick(p), gratitude: pick(g), diary: pick(d) };
     // Firestore wins when it has data; otherwise keep local.
-    if (remote.notes.length || remote.prayers.length || remote.gratitude.length || meta.exists) {
+    if (remote.notes.length || remote.prayers.length || remote.gratitude.length || remote.diary.length || meta.exists) {
       state.notes = remote.notes;
       state.prayers = remote.prayers;
       state.gratitude = remote.gratitude;
+      state.diary = remote.diary;
       if (meta.exists) {
         const m = meta.data();
         if (m.theme) state.theme = Object.assign(defaultState().theme, m.theme);
+        if (m.diaryCover) {
+          state.diaryCover = Object.assign(defaultCover(), m.diaryCover);
+          if (!Array.isArray(state.diaryCover.stickers)) state.diaryCover.stickers = [];
+          if (!COVER_BGS[state.diaryCover.bg]) state.diaryCover.bg = 'lavenderDream';
+        }
         if (m.activity) state.activity = m.activity;
         // new per-plan progress; fall back to the old flat planDone
         if (m.plan) {
@@ -341,12 +380,16 @@ function applyTheme() {
   root.style.setProperty('--glass-glow', c.accent + '8c');
   root.dataset.theme = state.theme.dark ? 'dark' : 'light';
   document.body.dataset.background = state.theme.background || 'dots';
+  document.body.dataset.textsize = state.theme.textSize === 'compact' ? 'compact' : 'cozy';
   document.body.style.fontFamily = "'" + state.theme.font + "', system-ui, sans-serif";
   const meta = document.querySelector('meta[name="theme-color"]');
   if (meta) meta.setAttribute('content', c.accent);
   // sync settings UI
   const cc = $('customColor'); if (cc) cc.value = c.accent;
   const fs = $('fontSelect'); if (fs) fs.value = state.theme.font;
+  const ts = $('textSizeSelect'); if (ts) ts.value = state.theme.textSize === 'compact' ? 'compact' : 'cozy';
+  const sa = $('setupAccent'); if (sa) sa.value = c.accent;
+  const sts = $('setupTextSize'); if (sts) sts.value = state.theme.textSize === 'compact' ? 'compact' : 'cozy';
   const bs = $('backgroundSelect'); if (bs) bs.value = state.theme.background || 'dots';
   const dt = $('darkToggle'); if (dt) dt.checked = !!state.theme.dark;
   document.querySelectorAll('#themeSwatches .swatch').forEach((b) => {
@@ -1125,6 +1168,8 @@ function openSetup() {
   setupPlanId = state.plan.id;
   $('setupName').value = (state.profile && state.profile.name) || '';
   $('setupFont').value = state.theme.font;
+  $('setupTextSize').value = state.theme.textSize === 'compact' ? 'compact' : 'cozy';
+  $('setupAccent').value = currentColors().accent;
   $('setupDark').checked = !!state.theme.dark;
   buildSetupThemes();
   buildSetupBackgrounds();
@@ -1303,6 +1348,556 @@ function initNavSlide() {
   requestAnimationFrame(() => positionNavLens(false));
 }
 
+/* ------------------------- diary ------------------------- */
+let editorMood = '😊';
+
+function fmtDiaryDate(dateStr) {
+  if (!dateStr) return '';
+  const d = new Date(dateStr + 'T12:00:00');
+  if (isNaN(d.getTime())) return dateStr;
+  return d.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+}
+function renderDiary() {
+  renderCoverPreview($('diaryCoverWrap'), state.diaryCover, false);
+  const list = $('diaryList');
+  list.innerHTML = '';
+  const entries = [...state.diary].sort((a, b) =>
+    (b.date || '').localeCompare(a.date || '') || (b.updatedAt || 0) - (a.updatedAt || 0));
+  $('diaryEmpty').classList.toggle('hidden', entries.length > 0);
+  entries.forEach((e) => {
+    const card = document.createElement('article');
+    card.className = 'note-card';
+    card.innerHTML =
+      '<div class="diary-mood">' + esc(e.mood || '🌸') + '</div>' +
+      (e.title ? '<h3>' + esc(e.title) + '</h3>' : '') +
+      '<p class="note-ref">' + esc(fmtDiaryDate(e.date)) + '</p>' +
+      '<p class="note-thoughts diary-entry-text">' + esc(e.text || '') + '</p>' +
+      '<p class="note-date">' + fmtDate(e.updatedAt || e.createdAt) + '</p>' +
+      '<div class="note-actions">' +
+      '<button class="btn" data-act="edit">✏️ Edit</button>' +
+      '<button class="btn btn-danger" data-act="delete">🗑️</button>' +
+      '</div>';
+    card.querySelector('[data-act="edit"]').addEventListener('click', () => openDiaryEditor(e));
+    card.querySelector('[data-act="delete"]').addEventListener('click', () => {
+      if (!confirm('Delete this diary entry?')) return;
+      state.diary = state.diary.filter((x) => x.id !== e.id);
+      deleteFromFirestore('diary', e.id);
+      persist();
+      renderDiary();
+      toast('Entry deleted 🗑️');
+    });
+    list.appendChild(card);
+  });
+}
+function buildMoodPicker() {
+  const wrap = $('diaryMoodPicker');
+  wrap.innerHTML = '';
+  DIARY_MOODS.forEach((m) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = m;
+    b.classList.toggle('selected', m === editorMood);
+    b.addEventListener('click', () => {
+      editorMood = m;
+      wrap.querySelectorAll('button').forEach((x) => x.classList.toggle('selected', x.textContent === m));
+    });
+    wrap.appendChild(b);
+  });
+}
+function openDiaryEditor(entry) {
+  buildMoodPicker();
+  if (entry) {
+    $('diaryModalTitle').textContent = 'Edit entry ✏️';
+    $('diaryId').value = entry.id;
+    $('diaryDate').value = entry.date || todayStr();
+    $('diaryTitle').value = entry.title || '';
+    $('diaryText').value = entry.text || '';
+    editorMood = entry.mood || '😊';
+    $('deleteDiaryBtn').classList.remove('hidden');
+  } else {
+    $('diaryModalTitle').textContent = 'New diary entry ✍️';
+    $('diaryId').value = '';
+    $('diaryDate').value = todayStr();
+    $('diaryTitle').value = '';
+    $('diaryText').value = '';
+    editorMood = '😊';
+    $('deleteDiaryBtn').classList.add('hidden');
+  }
+  document.querySelectorAll('#diaryMoodPicker button').forEach((x) =>
+    x.classList.toggle('selected', x.textContent === editorMood));
+  $('diaryModal').classList.remove('hidden');
+}
+function closeDiaryEditor() { $('diaryModal').classList.add('hidden'); }
+function saveDiaryFromEditor() {
+  const id = $('diaryId').value || uid();
+  const existing = state.diary.find((e) => e.id === id);
+  const text = $('diaryText').value.trim();
+  if (!text) { toast('Write a little something first ✍️'); return; }
+  const entry = {
+    id,
+    date: $('diaryDate').value || todayStr(),
+    title: $('diaryTitle').value.trim(),
+    text,
+    mood: editorMood,
+    createdAt: existing ? existing.createdAt : Date.now(),
+    updatedAt: Date.now()
+  };
+  if (existing) Object.assign(existing, entry);
+  else state.diary.push(entry);
+  persist();
+  recordActivity();
+  closeDiaryEditor();
+  renderDiary();
+  toast('Diary entry saved! 📔');
+}
+
+/* ------------------------- diary cover designer -------------------------
+   The cover is a little book: a background, a title, stickers placed on
+   it (tap to add, drag to move, sliders to resize/spin), and an optional
+   glitter overlay. The design saves with the diary data (local + Firestore). */
+let coverDraft = null;      // working copy while the designer is open
+let coverSelected = -1;     // index of the selected placed sticker, or -1
+let coverDrag = null;
+
+function coverStickerHTML(s) {
+  if (s.kind === 'svg') {
+    const st = STICKERS.find((x) => x.id === s.id);
+    return st ? st.svg : '🌸';
+  }
+  if (s.kind === 'emoji') return esc(s.id);
+  if (s.kind === 'url') return '<img src="' + esc(s.src) + '" alt="" draggable="false">';
+  return '🌸';
+}
+function glitterSpans(color) {
+  // Seeded layout so the sparkles stay put between renders.
+  let seed = 42;
+  const rnd = () => { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; };
+  let html = '';
+  const chars = ['✦', '✧', '✶', '✵'];
+  for (let i = 0; i < 16; i++) {
+    const left = (rnd() * 90 + 5).toFixed(1);
+    const top = (rnd() * 90 + 5).toFixed(1);
+    const size = Math.round(rnd() * 14 + 10);
+    const delay = (rnd() * 1.8).toFixed(2);
+    html += '<i style="left:' + left + '%;top:' + top + '%;font-size:' + size + 'px;color:' + esc(color) +
+      ';animation-delay:' + delay + 's;">' + chars[i % chars.length] + '</i>';
+  }
+  return html;
+}
+function renderCoverPreview(wrap, cover, interactive) {
+  if (!wrap || !cover) return;
+  const bg = COVER_BGS[cover.bg] || COVER_BGS.lavenderDream;
+  let html = '<div class="cover-preview" style="background:' + bg.css + '">';
+  html += '<div class="cover-title' + (cover.title ? '' : ' no-title') + '">' + esc(cover.title || 'My Diary') + '</div>';
+  if (cover.glitter && cover.glitter.on) {
+    html += '<div class="cover-glitter">' + glitterSpans(cover.glitter.color || '#fde047') + '</div>';
+  }
+  (cover.stickers || []).forEach((s, i) => {
+    html += '<div class="cover-sticker' + (interactive && i === coverSelected ? ' selected' : '') +
+      '" data-i="' + i + '" style="left:' + s.x + '%;top:' + s.y + '%;width:' + s.size + 'px;height:' + s.size +
+      'px;transform:translate(-50%,-50%) rotate(' + (s.rot || 0) + 'deg);font-size:' + s.size + 'px;">' +
+      coverStickerHTML(s) + '</div>';
+  });
+  html += '</div>';
+  wrap.innerHTML = html;
+  if (interactive) wireCoverDrag(wrap);
+}
+function wireCoverDrag(wrap) {
+  const preview = wrap.querySelector('.cover-preview');
+  if (!preview) return;
+  preview.querySelectorAll('.cover-sticker').forEach((el) => {
+    el.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      const i = +el.dataset.i;
+      coverSelected = i;
+      preview.querySelectorAll('.cover-sticker').forEach((x) => x.classList.remove('selected'));
+      el.classList.add('selected');
+      syncCoverControls();
+      coverDrag = { i, pointerId: e.pointerId, rect: preview.getBoundingClientRect() };
+      try { el.setPointerCapture(e.pointerId); } catch (err) { /* older browsers */ }
+      el.classList.add('dragging');
+    });
+    el.addEventListener('pointermove', (e) => {
+      if (!coverDrag || e.pointerId !== coverDrag.pointerId) return;
+      const s = coverDraft.stickers[coverDrag.i];
+      if (!s) return;
+      s.x = Math.min(96, Math.max(4, ((e.clientX - coverDrag.rect.left) / coverDrag.rect.width) * 100));
+      s.y = Math.min(96, Math.max(4, ((e.clientY - coverDrag.rect.top) / coverDrag.rect.height) * 100));
+      el.style.left = s.x + '%';
+      el.style.top = s.y + '%';
+    });
+    const endDrag = (e) => {
+      if (!coverDrag || e.pointerId !== coverDrag.pointerId) return;
+      coverDrag = null;
+      el.classList.remove('dragging');
+    };
+    el.addEventListener('pointerup', endDrag);
+    el.addEventListener('pointercancel', endDrag);
+  });
+}
+function syncCoverControls() {
+  const box = $('coverStickerControls');
+  const s = coverSelected >= 0 ? coverDraft.stickers[coverSelected] : null;
+  box.classList.toggle('hidden', !s);
+  if (!s) return;
+  $('coverStickerSize').value = s.size;
+  $('coverStickerRot').value = s.rot || 0;
+}
+function openCoverDesigner() {
+  coverDraft = JSON.parse(JSON.stringify(state.diaryCover || defaultCover()));
+  coverSelected = -1;
+  $('coverTitleInput').value = coverDraft.title || '';
+  $('glitterToggle').checked = !!(coverDraft.glitter && coverDraft.glitter.on);
+  $('glitterColor').value = (coverDraft.glitter && coverDraft.glitter.color) || '#fde047';
+  $('stickerSearchResults').innerHTML = '';
+  $('stickerSearchInput').value = '';
+  $('stickerSearchHint').textContent = 'Searches Openverse — free photos & illustrations, no key needed. Add a GIPHY key in Settings for animated transparent stickers.';
+  buildCoverBgPicker();
+  buildCoverStickerTray();
+  renderCoverPreview($('coverDesignerPreview'), coverDraft, true);
+  syncCoverControls();
+  $('coverModal').classList.remove('hidden');
+}
+function closeCoverDesigner() { $('coverModal').classList.add('hidden'); coverDraft = null; }
+function saveCover() {
+  if (!coverDraft) { closeCoverDesigner(); return; }
+  coverDraft.title = ($('coverTitleInput').value || '').trim();
+  coverDraft.glitter = { on: $('glitterToggle').checked, color: $('glitterColor').value || '#fde047' };
+  state.diaryCover = coverDraft;
+  persist();
+  closeCoverDesigner();
+  renderDiary();
+  toast('Cover saved! 🎨');
+}
+function buildCoverBgPicker() {
+  const wrap = $('coverBgPicker');
+  wrap.innerHTML = '';
+  for (const [key, b] of Object.entries(COVER_BGS)) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.title = b.name;
+    btn.style.background = b.css;
+    btn.classList.toggle('selected', coverDraft.bg === key);
+    btn.addEventListener('click', () => {
+      coverDraft.bg = key;
+      wrap.querySelectorAll('button').forEach((x) => x.classList.remove('selected'));
+      btn.classList.add('selected');
+      renderCoverPreview($('coverDesignerPreview'), coverDraft, true);
+    });
+    wrap.appendChild(btn);
+  }
+}
+function buildCoverStickerTray() {
+  const wrap = $('coverStickerTray');
+  wrap.innerHTML = '';
+  const add = (sticker) => {
+    coverDraft.stickers.push({
+      kind: sticker.kind, id: sticker.id || null, src: sticker.src || null,
+      x: 50, y: 50, size: 64, rot: 0
+    });
+    coverSelected = coverDraft.stickers.length - 1;
+    renderCoverPreview($('coverDesignerPreview'), coverDraft, true);
+    syncCoverControls();
+  };
+  STICKERS.forEach((s) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.innerHTML = s.svg;
+    b.title = s.name;
+    b.addEventListener('click', () => add({ kind: 'svg', id: s.id }));
+    wrap.appendChild(b);
+  });
+  EMOJI_STICKERS.forEach((e) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = e;
+    b.addEventListener('click', () => add({ kind: 'emoji', id: e }));
+    wrap.appendChild(b);
+  });
+}
+
+/* ------------------------- sticker search (real stickers via API) -------------------------
+   DEFAULT: Openverse (api.openverse.org) — free, no key needed, works out
+   of the box. It returns photos/illustrations (not transparent cut-outs).
+   OPT-IN UPGRADE: if the user saved a GIPHY API key in Settings, GIPHY
+   stickers (animated + transparent) are searched first, with Openverse as
+   the fallback. The key lives in localStorage only — never synced, never
+   exported, never in the repo. */
+function giphyKey() {
+  try { return (localStorage.getItem(LS_GIPHY) || '').trim(); } catch (e) { return ''; }
+}
+async function searchOpenverse(q) {
+  const url = 'https://api.openverse.org/v1/images/?q=' + encodeURIComponent(q) + '&page_size=12';
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('Openverse: HTTP ' + res.status);
+  const data = await res.json();
+  return (data.results || []).map((r) => ({
+    src: r.thumbnail || r.url, title: r.title || 'Openverse image', source: 'Openverse'
+  })).filter((r) => r.src);
+}
+async function searchGiphy(q, key) {
+  const url = 'https://api.giphy.com/v1/stickers/search?api_key=' + encodeURIComponent(key) +
+    '&q=' + encodeURIComponent(q) + '&limit=12&rating=g';
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('GIPHY: HTTP ' + res.status);
+  const data = await res.json();
+  return (data.data || []).map((g) => ({
+    src: (g.images && g.images.fixed_width && g.images.fixed_width.url) ||
+      (g.images && g.images.original && g.images.original.url) || '',
+    title: g.title || 'GIPHY sticker', source: 'GIPHY'
+  })).filter((r) => r.src);
+}
+async function runStickerSearch() {
+  const q = ($('stickerSearchInput').value || '').trim();
+  const resultsEl = $('stickerSearchResults');
+  const hintEl = $('stickerSearchHint');
+  if (!q) { toast('Type something to search for — e.g. flowers 🌸'); return; }
+  resultsEl.innerHTML = '<p class="muted small">Searching… 🔍</p>';
+  const key = giphyKey();
+  let results = [];
+  let usedSource = 'Openverse';
+  try {
+    if (key) {
+      // GIPHY opt-in: animated transparent stickers first.
+      try {
+        results = await searchGiphy(q, key);
+        usedSource = 'GIPHY';
+      } catch (e) { /* bad key / GIPHY down — fall through to Openverse */ }
+    }
+    if (!results.length) {
+      results = await searchOpenverse(q);
+      usedSource = 'Openverse';
+    }
+  } catch (e) {
+    resultsEl.innerHTML = '<p class="muted small">Couldn\'t search right now — check your connection and try again.</p>';
+    return;
+  }
+  hintEl.textContent = results.length
+    ? 'Showing ' + usedSource + ' results — tap one to add it to your cover.' +
+      (usedSource === 'Openverse' ? ' (Photos & illustrations — not transparent cut-outs. Add a GIPHY key in Settings for animated transparent stickers.)' : '')
+    : 'No stickers found for "' + q + '" — try another word.';
+  resultsEl.innerHTML = '';
+  results.forEach((r) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.title = r.title;
+    const img = document.createElement('img');
+    img.src = r.src;
+    img.alt = r.title;
+    img.loading = 'lazy';
+    b.appendChild(img);
+    b.addEventListener('click', () => {
+      if (!coverDraft) return;
+      coverDraft.stickers.push({ kind: 'url', id: null, src: r.src, x: 50, y: 50, size: 80, rot: 0 });
+      coverSelected = coverDraft.stickers.length - 1;
+      renderCoverPreview($('coverDesignerPreview'), coverDraft, true);
+      syncCoverControls();
+      toast('Sticker added to your cover! ✨');
+    });
+    resultsEl.appendChild(b);
+  });
+}
+
+/* ------------------------- app passcode -------------------------
+   In-app PIN lock. The web can't use the phone's lock screen, so this is
+   honestly labelled "App passcode". Only a salted SHA-256 hash is stored
+   (crypto.subtle) — the PIN itself is never saved anywhere. */
+function pinStored() {
+  try {
+    const raw = localStorage.getItem(LS_PIN);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return parsed && parsed.salt && parsed.hash ? parsed : null;
+  } catch (e) { return null; }
+}
+async function sha256Hex(str) {
+  try {
+    if (typeof crypto !== 'undefined' && crypto.subtle) {
+      const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+      return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
+    }
+  } catch (e) { /* fall through to the simple fallback */ }
+  // Fallback for non-secure contexts (e.g. file://): a simple FNV-1a hash.
+  // Weaker, but the PIN is still never stored in plain text.
+  let h = 0x811c9dc5;
+  for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 0x01000193); }
+  return 'fnv1a-' + (h >>> 0).toString(16);
+}
+async function hashPin(pin, salt) { return sha256Hex(pin + '::' + salt); }
+function randomSalt() {
+  const arr = new Uint8Array(16);
+  if (typeof crypto !== 'undefined' && crypto.getRandomValues) crypto.getRandomValues(arr);
+  else for (let i = 0; i < arr.length; i++) arr[i] = Math.floor(Math.random() * 256);
+  return [...arr].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+async function verifyPin(pin) {
+  const stored = pinStored();
+  if (!stored) return false;
+  return (await hashPin(pin, stored.salt)) === stored.hash;
+}
+async function savePin(pin) {
+  const salt = randomSalt();
+  const hash = await hashPin(pin, salt);
+  try { localStorage.setItem(LS_PIN, JSON.stringify({ salt, hash })); } catch (e) { /* storage blocked */ }
+  refreshPinUI();
+}
+function clearPin() {
+  try { localStorage.removeItem(LS_PIN); } catch (e) { /* ignore */ }
+  refreshPinUI();
+}
+function refreshPinUI() {
+  const on = !!pinStored();
+  $('pinStatus').textContent = on
+    ? '🔒 Passcode is on — the app asks for it every time it opens.'
+    : 'No passcode set — anyone who opens the app can read it.';
+  $('setPinBtn').classList.toggle('hidden', on);
+  $('changePinBtn').classList.toggle('hidden', !on);
+  $('removePinBtn').classList.toggle('hidden', !on);
+}
+
+/* Generic 4-digit pad: builds digit buttons into `padEl`, lights up `dotsEl`,
+   calls onComplete(pin) when 4 digits are entered. */
+function buildPinPad(padEl, dotsEl, onComplete) {
+  padEl.innerHTML = '';
+  dotsEl.innerHTML = '<span></span><span></span><span></span><span></span>';
+  let pin = '';
+  const paint = () => {
+    dotsEl.querySelectorAll('span').forEach((s, i) => s.classList.toggle('filled', i < pin.length));
+  };
+  const press = (d) => {
+    if (pin.length >= 4) return;
+    pin += d;
+    paint();
+    if (pin.length === 4) {
+      const done = pin;
+      pin = '';
+      setTimeout(paint, 150);
+      onComplete(done);
+    }
+  };
+  const del = () => { pin = pin.slice(0, -1); paint(); };
+  [1, 2, 3, 4, 5, 6, 7, 8, 9].forEach((n) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = String(n);
+    b.addEventListener('click', () => press(String(n)));
+    padEl.appendChild(b);
+  });
+  const empty = document.createElement('button');
+  empty.type = 'button';
+  empty.className = 'pin-empty';
+  empty.tabIndex = -1;
+  padEl.appendChild(empty);
+  const zero = document.createElement('button');
+  zero.type = 'button';
+  zero.textContent = '0';
+  zero.addEventListener('click', () => press('0'));
+  padEl.appendChild(zero);
+  const delBtn = document.createElement('button');
+  delBtn.type = 'button';
+  delBtn.className = 'pin-del';
+  delBtn.textContent = '⌫';
+  delBtn.addEventListener('click', del);
+  padEl.appendChild(delBtn);
+}
+
+/* Lock screen (shown on launch when a passcode is set). */
+function showLockScreen() {
+  $('lockScreen').classList.remove('hidden');
+  $('lockError').classList.add('hidden');
+  buildPinPad($('lockPad'), $('lockDots'), async (pin) => {
+    if (await verifyPin(pin)) {
+      $('lockScreen').classList.add('hidden');
+      toast('Welcome back! 🌷');
+    } else {
+      const err = $('lockError');
+      err.textContent = 'Wrong passcode — try again.';
+      err.classList.remove('hidden');
+      const card = document.querySelector('.lock-card');
+      card.classList.remove('shake');
+      void card.offsetWidth; // restart the animation
+      card.classList.add('shake');
+    }
+  });
+}
+function maybeLockOnLaunch() {
+  if (pinStored()) showLockScreen();
+}
+
+/* PIN modal flows: set / change / remove. */
+let pinFlow = null; // {mode:'set'|'change'|'remove', stage:'current'|'new'|'confirm', first:''}
+function openPinModal(mode) {
+  pinFlow = { mode, stage: mode === 'set' ? 'new' : 'current', first: '' };
+  const titles = {
+    set: ['Set passcode', 'Choose a 4-digit passcode.'],
+    change: ['Change passcode', 'First, enter your current passcode.'],
+    remove: ['Turn off passcode', 'Enter your current passcode to turn it off.']
+  };
+  $('pinModalTitle').textContent = titles[mode][0];
+  $('pinModalSub').textContent = titles[mode][1];
+  $('pinError').classList.add('hidden');
+  $('pinModal').classList.remove('hidden');
+  buildPinPad($('pinPad'), $('pinDots'), onPinModalDigit);
+}
+function closePinModal() { $('pinModal').classList.add('hidden'); pinFlow = null; }
+function pinModalWrong(msg) {
+  const err = $('pinError');
+  err.textContent = msg;
+  err.classList.remove('hidden');
+  const card = document.querySelector('.pin-card');
+  card.classList.remove('shake');
+  void card.offsetWidth;
+  card.classList.add('shake');
+}
+async function onPinModalDigit(pin) {
+  if (!pinFlow) return;
+  if (pinFlow.stage === 'current') {
+    if (await verifyPin(pin)) {
+      if (pinFlow.mode === 'remove') {
+        clearPin();
+        closePinModal();
+        toast('Passcode turned off 🔓');
+      } else {
+        pinFlow.stage = 'new';
+        $('pinModalTitle').textContent = 'New passcode';
+        $('pinModalSub').textContent = 'Choose a new 4-digit passcode.';
+        $('pinError').classList.add('hidden');
+      }
+    } else {
+      pinModalWrong('That\'s not the current passcode — try again.');
+    }
+    return;
+  }
+  if (pinFlow.stage === 'new') {
+    pinFlow.first = pin;
+    pinFlow.stage = 'confirm';
+    $('pinModalTitle').textContent = 'Confirm passcode';
+    $('pinModalSub').textContent = 'Enter it once more to make sure.';
+    $('pinError').classList.add('hidden');
+    return;
+  }
+  // stage === 'confirm'
+  if (pin !== pinFlow.first) {
+    pinFlow.stage = 'new';
+    pinFlow.first = '';
+    $('pinModalTitle').textContent = pinFlow.mode === 'set' ? 'Set passcode' : 'New passcode';
+    $('pinModalSub').textContent = 'Those didn\'t match — choose a 4-digit passcode.';
+    pinModalWrong('The two passcodes didn\'t match. Try again.');
+    return;
+  }
+  await savePin(pin);
+  closePinModal();
+  toast(pinFlow.mode === 'change' ? 'Passcode changed! 🔒' : 'Passcode set! 🔒');
+}
+function resetAppData() {
+  // Forgot passcode: wipe local data only. Firestore data is untouched and
+  // re-syncs when the user signs in again.
+  try {
+    [LS_KEY, LS_VOTD, LS_PIN, LS_GIPHY].forEach((k) => localStorage.removeItem(k));
+  } catch (e) { /* ignore */ }
+  location.reload();
+}
+
 /* ------------------------- tabs & render-all ------------------------- */
 function switchTab(name) {
   document.querySelectorAll('.tab-btn').forEach((b) =>
@@ -1311,6 +1906,7 @@ function switchTab(name) {
     s.classList.toggle('hidden', s.id !== 'tab-' + name));
   if (name === 'plan') renderPlan();
   if (name === 'notes') { renderNotes(); renderTagChips(); }
+  if (name === 'diary') renderDiary();
   positionNavLens(true);
 }
 function renderAll() {
@@ -1323,6 +1919,7 @@ function renderAll() {
   renderPrayers();
   renderGratitude();
   renderPlan();
+  renderDiary();
 }
 
 /* ------------------------- PWA ------------------------- */
@@ -1360,6 +1957,113 @@ function initPWA() {
 function initUI() {
   document.querySelectorAll('.tab-btn').forEach((b) =>
     b.addEventListener('click', () => switchTab(b.dataset.tab)));
+
+  // Quick-add (+) in the middle of the bottom bar — straight to a new note.
+  $('quickAddBtn').addEventListener('click', () => openNoteEditor(null));
+
+  // Diary
+  $('newDiaryBtn').addEventListener('click', () => openDiaryEditor(null));
+  $('closeDiaryBtn').addEventListener('click', closeDiaryEditor);
+  $('diaryModal').addEventListener('click', (e) => { if (e.target === $('diaryModal')) closeDiaryEditor(); });
+  $('saveDiaryBtn').addEventListener('click', saveDiaryFromEditor);
+  $('deleteDiaryBtn').addEventListener('click', () => {
+    const id = $('diaryId').value;
+    if (!id || !confirm('Delete this diary entry?')) return;
+    state.diary = state.diary.filter((x) => x.id !== id);
+    deleteFromFirestore('diary', id);
+    persist();
+    closeDiaryEditor();
+    renderDiary();
+    toast('Entry deleted 🗑️');
+  });
+
+  // Cover designer
+  $('designCoverBtn').addEventListener('click', openCoverDesigner);
+  $('closeCoverBtn').addEventListener('click', closeCoverDesigner);
+  $('coverModal').addEventListener('click', (e) => { if (e.target === $('coverModal')) closeCoverDesigner(); });
+  $('saveCoverBtn').addEventListener('click', saveCover);
+  $('coverTitleInput').addEventListener('input', (e) => {
+    if (!coverDraft) return;
+    coverDraft.title = e.target.value;
+    renderCoverPreview($('coverDesignerPreview'), coverDraft, true);
+  });
+  $('glitterToggle').addEventListener('change', (e) => {
+    if (!coverDraft) return;
+    coverDraft.glitter.on = e.target.checked;
+    renderCoverPreview($('coverDesignerPreview'), coverDraft, true);
+  });
+  $('glitterColor').addEventListener('input', (e) => {
+    if (!coverDraft) return;
+    coverDraft.glitter.color = e.target.value;
+    renderCoverPreview($('coverDesignerPreview'), coverDraft, true);
+  });
+  $('coverStickerSize').addEventListener('input', (e) => {
+    if (!coverDraft || coverSelected < 0) return;
+    coverDraft.stickers[coverSelected].size = +e.target.value;
+    renderCoverPreview($('coverDesignerPreview'), coverDraft, true);
+  });
+  $('coverStickerRot').addEventListener('input', (e) => {
+    if (!coverDraft || coverSelected < 0) return;
+    coverDraft.stickers[coverSelected].rot = +e.target.value;
+    renderCoverPreview($('coverDesignerPreview'), coverDraft, true);
+  });
+  $('coverStickerDeleteBtn').addEventListener('click', () => {
+    if (!coverDraft || coverSelected < 0) return;
+    coverDraft.stickers.splice(coverSelected, 1);
+    coverSelected = -1;
+    renderCoverPreview($('coverDesignerPreview'), coverDraft, true);
+    syncCoverControls();
+  });
+  $('coverStickerDoneBtn').addEventListener('click', () => {
+    coverSelected = -1;
+    renderCoverPreview($('coverDesignerPreview'), coverDraft, true);
+    syncCoverControls();
+  });
+  $('stickerSearchBtn').addEventListener('click', runStickerSearch);
+  $('stickerSearchInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') runStickerSearch(); });
+
+  // App passcode
+  $('setPinBtn').addEventListener('click', () => openPinModal('set'));
+  $('changePinBtn').addEventListener('click', () => openPinModal('change'));
+  $('removePinBtn').addEventListener('click', () => openPinModal('remove'));
+  $('pinCancelBtn').addEventListener('click', closePinModal);
+  $('pinModal').addEventListener('click', (e) => { if (e.target === $('pinModal')) closePinModal(); });
+  $('lockForgotBtn').addEventListener('click', () => {
+    if (!confirm('Forgot your passcode? This erases everything stored on THIS device — notes, diary, prayers, gratitude and settings. If you\'re signed in, your synced data comes back when you sign in again. Erase everything on this device?')) return;
+    resetAppData();
+  });
+  refreshPinUI();
+
+  // GIPHY key (optional upgrade for animated stickers — device only)
+  $('giphyKeyInput').value = giphyKey();
+  $('giphyKeySaveBtn').addEventListener('click', () => {
+    const key = ($('giphyKeyInput').value || '').trim();
+    if (!key) { toast('Paste your GIPHY key first — or leave it empty, Openverse search already works.'); return; }
+    try { localStorage.setItem(LS_GIPHY, key); } catch (e) { /* storage blocked */ }
+    toast('GIPHY key saved on this device ✨');
+  });
+  $('giphyKeyClearBtn').addEventListener('click', () => {
+    try { localStorage.removeItem(LS_GIPHY); } catch (e) { /* ignore */ }
+    $('giphyKeyInput').value = '';
+    toast('GIPHY key removed — sticker search uses Openverse.');
+  });
+
+  // Text size + custom accent (also in the setup flow)
+  $('textSizeSelect').addEventListener('change', (e) => {
+    state.theme.textSize = e.target.value;
+    applyTheme();
+    persist();
+  });
+  $('setupAccent').addEventListener('input', (e) => {
+    state.theme.customAccent = e.target.value;
+    applyTheme();
+    persist();
+  });
+  $('setupTextSize').addEventListener('change', (e) => {
+    state.theme.textSize = e.target.value;
+    applyTheme();
+    persist();
+  });
 
   $('newNoteBtn').addEventListener('click', () => openNoteEditor(null));
   $('closeNoteBtn').addEventListener('click', closeNoteEditor);
@@ -1514,6 +2218,7 @@ applyTheme();
 initAuth();
 initUI();
 initPWA();
+maybeLockOnLaunch(); // passcode set? PIN pad first, before any content
 
 // No Firebase config yet (or Firebase failed) → straight into local mode.
 if (!auth) {
