@@ -607,7 +607,6 @@ body[data-textsize="compact"] .big-number { font-size: 28px; }
 .home-link-card:hover { transform: translateY(-2px); }
 .home-link-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .home-link-card:active { transform: scale(0.97); }
-.more-card { text-align: center; }
 
 /* ---------- Interactive Bible (Prayers tab) ---------- */
 .bible-switch { display: flex; gap: 8px; margin-bottom: 12px; }
@@ -654,3 +653,176 @@ body[data-textsize="compact"] .big-number { font-size: 28px; }
 .verse-action-card .note-ref { margin: 0 0 8px; }
 .verse-action-card .note-verse { margin: 0 0 16px; font-size: 16px; line-height: 1.6; }
 .verse-action-btns { display: flex; flex-direction: column; gap: 8px; }
+
+/* ==========================================================================
+   ANDROID-ONLY UI — liquid glass redesign + nav fix
+   Everything here is scoped under html[data-platform="android"], which is
+   set by a tiny inline script in <head> when the user agent is Android
+   (installed PWA and native APK alike). iOS and desktop never match these
+   selectors, so they look exactly as before.
+   ========================================================================== */
+
+/* ---------- Privacy veil (all platforms; only shown by JS) ----------
+   Opaque cover shown the instant the app is backgrounded, so the
+   app-switcher / recent-apps thumbnail never shows notes or prayers. */
+.privacy-veil {
+  position: fixed; inset: 0; z-index: 500;
+  background: var(--bg);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 12px;
+}
+.privacy-veil p { font-weight: 800; font-size: 20px; margin: 0; }
+.privacy-veil-logo { width: 88px; height: 88px; border-radius: 26px; }
+/* Biometric buttons on the lock screen / passcode modal (native only). */
+#lockBioBtn, #pinBioBtn { margin-top: 14px; }
+
+/* ---------- The "✨ MORE" strip fix ----------
+   The floating pill leaves a gap to the viewport bottom where page content
+   (the old Home "More" card) showed through as a clipped strip. On
+   Android a fixed gradient+blur skirt fills that gap so nothing readable
+   can ever appear below the nav, and the app's bottom padding clears the
+   whole nav + skirt with margin to spare. */
+.nav-scrim { display: none; }
+html[data-platform="android"] .nav-scrim {
+  display: block;
+  position: fixed; left: 0; right: 0; bottom: 0;
+  height: calc(96px + env(safe-area-inset-bottom, 0px));
+  z-index: 49; pointer-events: none;
+  background: linear-gradient(180deg,
+    transparent 0%,
+    rgba(245, 240, 255, 0.6) 45%,
+    rgba(245, 240, 255, 0.92) 100%);
+  -webkit-backdrop-filter: blur(14px) saturate(160%);
+  backdrop-filter: blur(14px) saturate(160%);
+  -webkit-mask-image: linear-gradient(180deg, transparent 0%, #000 45%);
+  mask-image: linear-gradient(180deg, transparent 0%, #000 45%);
+}
+html[data-platform="android"][data-theme="dark"] .nav-scrim {
+  background: linear-gradient(180deg,
+    transparent 0%,
+    rgba(29, 25, 38, 0.55) 45%,
+    rgba(29, 25, 38, 0.88) 100%);
+}
+
+/* ---------- Android nav geometry ---------- */
+html[data-platform="android"] #app {
+  padding: 0 14px calc(168px + env(safe-area-inset-bottom, 0px));
+}
+html[data-platform="android"] .app-header { padding-top: 14px; }
+html[data-platform="android"] .bottom-nav {
+  padding: 8px 12px;
+  bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+}
+html[data-platform="android"] .tab-btn {
+  min-height: 48px; justify-content: center;
+  -webkit-tap-highlight-color: transparent;
+}
+html[data-platform="android"] .tab-btn:not(.active) { opacity: 0.72; }
+html[data-platform="android"] .tab-btn.active { opacity: 1; }
+
+/* ---------- Android liquid glass: the nav ---------- */
+html[data-platform="android"] .bottom-nav-glass {
+  -webkit-backdrop-filter: blur(28px) saturate(220%) brightness(1.12);
+  backdrop-filter: blur(28px) saturate(220%) brightness(1.12);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.34), rgba(255, 255, 255, 0.14));
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.6),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.14),
+    0 14px 36px rgba(0, 0, 0, 0.35);
+}
+html[data-platform="android"][data-theme="dark"] .bottom-nav-glass {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0.09));
+  background-color: rgba(88, 70, 140, 0.36);
+  border-color: rgba(255, 255, 255, 0.38);
+}
+html[data-platform="android"] .bottom-nav-glass::before {
+  background: linear-gradient(115deg, transparent 30%, rgba(255, 255, 255, 0.42) 46%, rgba(255, 255, 255, 0.12) 54%, transparent 66%);
+}
+/* Stronger sliding lens = the active tab's glassy pill highlight. */
+html[data-platform="android"] .nav-lens {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.38), rgba(255, 255, 255, 0.14));
+  border-color: rgba(255, 255, 255, 0.48);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.75),
+    0 4px 16px rgba(60, 30, 120, 0.22);
+}
+/* Raised glass "+" with its own highlight ring. */
+html[data-platform="android"] .quick-add-btn {
+  width: 48px; height: 48px; margin: -14px 4px 0;
+  background: linear-gradient(160deg, #c4b5fd, var(--accent));
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  box-shadow:
+    0 0 0 4px rgba(167, 139, 250, 0.30),
+    0 8px 20px rgba(60, 30, 120, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.65);
+}
+
+/* ---------- Android liquid glass: cards ---------- */
+html[data-platform="android"] .card,
+html[data-platform="android"] .note-card,
+html[data-platform="android"] .tag-chip,
+html[data-platform="android"] .bible-switch-btn,
+html[data-platform="android"] .more-item {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0.45));
+  -webkit-backdrop-filter: blur(18px) saturate(180%);
+  backdrop-filter: blur(18px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.65);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.7),
+    0 10px 28px rgba(60, 30, 120, 0.14);
+}
+html[data-platform="android"][data-theme="dark"] .card,
+html[data-platform="android"][data-theme="dark"] .note-card,
+html[data-platform="android"][data-theme="dark"] .tag-chip,
+html[data-platform="android"][data-theme="dark"] .bible-switch-btn,
+html[data-platform="android"][data-theme="dark"] .more-item {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.05));
+  background-color: rgba(43, 37, 64, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    0 10px 28px rgba(0, 0, 0, 0.35);
+}
+/* Hero + verse-of-the-day get the deepest card glass. */
+html[data-platform="android"] .hero-card,
+html[data-platform="android"] .votd-card {
+  -webkit-backdrop-filter: blur(22px) saturate(200%);
+  backdrop-filter: blur(22px) saturate(200%);
+}
+/* Slightly denser Android spacing. */
+html[data-platform="android"] .card { padding: 18px; margin-top: 12px; }
+html[data-platform="android"] .row-2 { gap: 12px; }
+
+/* ---------- Android liquid glass: modals & sheets (deepest blur) ---------- */
+html[data-platform="android"] .modal-card {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0.58));
+  -webkit-backdrop-filter: blur(26px) saturate(190%);
+  backdrop-filter: blur(26px) saturate(190%);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.65),
+    0 18px 48px rgba(0, 0, 0, 0.35);
+}
+html[data-platform="android"][data-theme="dark"] .modal-card {
+  background: linear-gradient(135deg, rgba(52, 45, 78, 0.88), rgba(43, 37, 64, 0.74));
+  border-color: rgba(255, 255, 255, 0.18);
+}
+/* Android-style bottom-sheet drag handle on the More sheet. */
+html[data-platform="android"] .more-sheet { padding-top: 14px; }
+html[data-platform="android"] .more-sheet::before {
+  content: ''; display: block;
+  width: 40px; height: 5px; border-radius: 999px;
+  background: var(--border);
+  margin: -6px auto 12px;
+}
+html[data-platform="android"] .more-item { background-color: transparent; }
+
+/* ---------- Android pressed states (Material-style) ---------- */
+html[data-platform="android"] .btn { -webkit-tap-highlight-color: transparent; }
+html[data-platform="android"] .btn:active { transform: scale(0.94); filter: brightness(0.93); }
+html[data-platform="android"] .btn-primary:active { filter: brightness(1.08); }
+html[data-platform="android"] .icon-btn:active { transform: scale(0.9); }
+html[data-platform="android"] .home-link-card:active { transform: scale(0.96); }
+/* Toast clears the taller Android nav + scrim. */
+html[data-platform="android"] .toast { bottom: 128px; }

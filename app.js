@@ -79,6 +79,10 @@ const IS_STANDALONE = (typeof window !== 'undefined') && (
   (typeof window.matchMedia === 'function' && window.matchMedia('(display-mode: standalone)').matches)
 );
 const IS_IOS = (typeof navigator !== 'undefined') && /iphone|ipad|ipod/i.test(navigator.userAgent);
+/* Android-only UI variant (mirrors the <head> script that tags <html>
+   with data-platform="android" before first paint). The installed PWA
+   and the native APK both run this same web code, so both get it. */
+const IS_ANDROID = (typeof navigator !== 'undefined') && /android/i.test(navigator.userAgent);
 const _nativePlugins = {};
 function nativePlugin(name) {
   if (!IS_NATIVE || !CAP || typeof CAP.registerPlugin !== 'function') return null;
@@ -118,6 +122,21 @@ async function tryNativeBiometric() {
     return true;
   } catch (e) { return false; }
 }
+/* Biometric availability, cached after the first check: true when the
+   device has a fingerprint / face enrolled OR is secured with a PIN,
+   pattern or password (allowDeviceCredential covers that case). */
+let bioAvailable = null; // null = not checked yet
+async function biometricAvailable() {
+  if (!IS_NATIVE) return false;
+  if (bioAvailable !== null) return bioAvailable;
+  const bio = nativePlugin('BiometricAuthNative');
+  if (!bio) { bioAvailable = false; return false; }
+  try {
+    const info = await bio.checkBiometry();
+    bioAvailable = !!(info && (info.isAvailable || info.deviceIsSecure));
+  } catch (e) { bioAvailable = false; }
+  return bioAvailable;
+}
 /* Status-bar tint follows the theme accent (native only). */
 function nativeStatusBar() {
   const sb = nativePlugin('StatusBar');
@@ -152,6 +171,9 @@ const LS_PIN = 'verseGarden.pin.v1';        // {salt, hash} — PIN hash only, n
 const LS_GIPHY = 'verseGarden.giphyKey.v1'; // GIPHY API key, this device only — never synced/exported
 const LS_BIBLE = 'verseGarden.bible.v1'; // last-read book + chapter, this device only
 const LS_GOOGLE_RETURN = 'verseGarden.googleReturn.v1'; // timestamp set when a Google sign-in leaves the app for the browser
+const LS_PIN_ATTEMPTS = 'verseGarden.pinAttempts.v1'; // {fails, lockUntil} — survives reloads
+const PIN_MAX_FAILS = 5;               // wrong passcodes before a cooldown
+const PIN_LOCKOUT_MS = 30 * 1000;      // 30-second cooldown after 5 wrong tries
 
 const THEMES = {
   lavender: { name: 'Lavender 💜', accent: '#a78bfa', soft: '#ede9fe', bg: '#f5f0ff' },
@@ -1782,6 +1804,17 @@ function exportData() {
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
   toast('Backup downloaded! 💾');
 }
+/* Export gate: a backup is the whole garden. When a passcode is set the
+   export needs fingerprint (native) or the passcode first; without a
+   passcode it still works, with a nudge to set one. */
+function exportDataGated() {
+  if (!pinStored()) {
+    toast('Tip: set a passcode in Settings to keep your backups private 🔒');
+    exportData();
+    return;
+  }
+  requestPasscode('Export backup', 'Enter your passcode to download your backup.', () => exportData());
+}
 function importData(file) {
   const reader = new FileReader();
   reader.onload = () => {
@@ -2404,9 +2437,54 @@ function refreshPinUI() {
   $('removePinBtn').classList.toggle('hidden', !on);
 }
 
+/* Failed-passcode lockout: 5 wrong tries → 30-second cooldown, stored in
+   localStorage so a reload doesn't clear it. */
+function getPinAttempts() {
+  try {
+    const raw = localStorage.getItem(LS_PIN_ATTEMPTS);
+    const p = raw ? JSON.parse(raw) : null;
+    return p && typeof p.fails === 'number'
+      ? { fails: p.fails, lockUntil: p.lockUntil || 0 }
+      : { fails: 0, lockUntil: 0 };
+  } catch (e) { return { fails: 0, lockUntil: 0 }; }
+}
+function setPinAttempts(a) {
+  try { localStorage.setItem(LS_PIN_ATTEMPTS, JSON.stringify(a)); } catch (e) { /* ignore */ }
+}
+function pinLockoutRemainingMs() {
+  const a = getPinAttempts();
+  return a.lockUntil > Date.now() ? a.lockUntil - Date.now() : 0;
+}
+function registerPinAttempt(ok) {
+  const a = getPinAttempts();
+  if (ok) { setPinAttempts({ fails: 0, lockUntil: 0 }); return; }
+  a.fails += 1;
+  if (a.fails >= PIN_MAX_FAILS) { a.lockUntil = Date.now() + PIN_LOCKOUT_MS; a.fails = 0; }
+  setPinAttempts(a);
+}
+/* Live "try again in Ns" countdown in an error line; calls onDone when
+   the cooldown ends. Shared by the lock screen and the passcode modal. */
+let lockoutTimer = null;
+function showLockoutCountdown(errEl, onDone) {
+  const tick = () => {
+    const ms = pinLockoutRemainingMs();
+    if (ms <= 0) {
+      if (lockoutTimer) { clearInterval(lockoutTimer); lockoutTimer = null; }
+      errEl.classList.add('hidden');
+      if (onDone) onDone();
+      return;
+    }
+    errEl.textContent = 'Too many wrong tries — try again in ' + Math.ceil(ms / 1000) + 's 🔒';
+    errEl.classList.remove('hidden');
+  };
+  if (lockoutTimer) clearInterval(lockoutTimer);
+  tick();
+  lockoutTimer = setInterval(tick, 500);
+}
+
 /* Generic 4-digit pad: builds digit buttons into `padEl`, lights up `dotsEl`,
    calls onComplete(pin) when 4 digits are entered. */
-function buildPinPad(padEl, dotsEl, onComplete) {
+function buildPinPad(padEl, dotsEl, onComplete, disabledFn) {
   padEl.innerHTML = '';
   dotsEl.innerHTML = '<span></span><span></span><span></span><span></span>';
   let pin = '';
@@ -2414,6 +2492,7 @@ function buildPinPad(padEl, dotsEl, onComplete) {
     dotsEl.querySelectorAll('span').forEach((s, i) => s.classList.toggle('filled', i < pin.length));
   };
   const press = (d) => {
+    if (disabledFn && disabledFn()) return; // e.g. inside a lockout cooldown
     if (pin.length >= 4) return;
     pin += d;
     paint();
@@ -2424,7 +2503,10 @@ function buildPinPad(padEl, dotsEl, onComplete) {
       onComplete(done);
     }
   };
-  const del = () => { pin = pin.slice(0, -1); paint(); };
+  const del = () => {
+    if (disabledFn && disabledFn()) return;
+    pin = pin.slice(0, -1); paint();
+  };
   [1, 2, 3, 4, 5, 6, 7, 8, 9].forEach((n) => {
     const b = document.createElement('button');
     b.type = 'button';
@@ -2450,25 +2532,39 @@ function buildPinPad(padEl, dotsEl, onComplete) {
   padEl.appendChild(delBtn);
 }
 
-/* Lock screen (shown on launch when a passcode is set). */
+/* Shared unlock success: clear any cooldown, hide the lock screen and
+   the privacy veil, and reset the inactivity timer. */
+function unlockSuccess() {
+  if (lockoutTimer) { clearInterval(lockoutTimer); lockoutTimer = null; }
+  registerPinAttempt(true);
+  $('lockScreen').classList.add('hidden');
+  hidePrivacyVeil();
+  resetInactivityTimer();
+  toast('Welcome back! 🌷');
+}
+/* Lock screen (shown on launch, on return from background, after 2 quiet
+   minutes, or via More → Lock now). Fingerprint / face is offered FIRST
+   on native — a visible button plus an automatic prompt — and the PIN
+   pad underneath stays as the fallback. */
 function showLockScreen() {
   $('lockScreen').classList.remove('hidden');
   $('lockError').classList.add('hidden');
-  // Native shell: try fingerprint / face first — the PIN pad underneath
-  // stays as the fallback (and is already there if biometry is cancelled).
+  if (pinLockoutRemainingMs() > 0) showLockoutCountdown($('lockError'));
+  const bioBtn = $('lockBioBtn');
   if (IS_NATIVE) {
-    tryNativeBiometric().then((ok) => {
-      if (ok) {
-        $('lockScreen').classList.add('hidden');
-        toast('Welcome back! 🌷');
-      }
-    });
+    bioBtn.classList.remove('hidden');
+    biometricAvailable().then((ok) => { if (!ok) bioBtn.classList.add('hidden'); });
+    tryNativeBiometric().then((ok) => { if (ok) unlockSuccess(); });
+  } else {
+    bioBtn.classList.add('hidden');
   }
   buildPinPad($('lockPad'), $('lockDots'), async (pin) => {
+    if (pinLockoutRemainingMs() > 0) { showLockoutCountdown($('lockError')); return; }
     if (await verifyPin(pin)) {
-      $('lockScreen').classList.add('hidden');
-      toast('Welcome back! 🌷');
+      unlockSuccess();
     } else {
+      registerPinAttempt(false);
+      if (pinLockoutRemainingMs() > 0) { showLockoutCountdown($('lockError')); return; }
       const err = $('lockError');
       err.textContent = 'Wrong passcode — try again.';
       err.classList.remove('hidden');
@@ -2477,28 +2573,119 @@ function showLockScreen() {
       void card.offsetWidth; // restart the animation
       card.classList.add('shake');
     }
-  });
+  }, () => pinLockoutRemainingMs() > 0);
 }
 function maybeLockOnLaunch() {
   if (pinStored()) showLockScreen();
 }
 
-/* PIN modal flows: set / change / remove. */
-let pinFlow = null; // {mode:'set'|'change'|'remove', stage:'current'|'new'|'confirm', first:''}
-function openPinModal(mode) {
+/* ------------------------- auto-lock, privacy veil, inactivity -------------------------
+   - Backgrounded (tab hidden / Capacitor appStateChange): cover the content
+     with an opaque veil at once, so the app-switcher thumbnail never shows
+     notes, verses or prayers — and lock on return (fingerprint first).
+   - 2 quiet minutes while open: lock the same way.
+   - More → Lock now: lock immediately.
+   All of it is gated on a passcode being set; without one the app just
+   works as before (the veil still covers content while backgrounded). */
+const INACTIVITY_MS = 2 * 60 * 1000;
+let inactivityTimer = null;
+let pendingLock = false; // app was backgrounded while a passcode is set
+function showPrivacyVeil() { const v = $('privacyVeil'); if (v) v.classList.remove('hidden'); }
+function hidePrivacyVeil() { const v = $('privacyVeil'); if (v) v.classList.add('hidden'); }
+function resetInactivityTimer() {
+  if (inactivityTimer) clearTimeout(inactivityTimer);
+  if (!pinStored()) return;
+  inactivityTimer = setTimeout(() => {
+    if ($('lockScreen').classList.contains('hidden')) showLockScreen();
+  }, INACTIVITY_MS);
+}
+function onAppHidden() {
+  showPrivacyVeil();
+  if (pinStored()) pendingLock = true;
+}
+function onAppVisible() {
+  hidePrivacyVeil();
+  if (pendingLock) {
+    pendingLock = false;
+    if (pinStored()) showLockScreen();
+  }
+  resetInactivityTimer();
+}
+function lockNow() {
+  if (!pinStored()) {
+    toast('Set a passcode in Settings first, then you can lock the app 🔒');
+    return;
+  }
+  showLockScreen();
+}
+function initAutoLock() {
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) onAppHidden();
+    else onAppVisible();
+  });
+  // Native shell: Capacitor's App plugin fires the same transitions even
+  // when the WebView visibility event is delayed.
+  if (IS_NATIVE && CAP && typeof CAP.registerPlugin === 'function') {
+    try {
+      const app = nativePlugin('App');
+      if (app && typeof app.addListener === 'function') {
+        app.addListener('appStateChange', (s) => {
+          if (s && s.isActive === false) onAppHidden();
+          else if (s && s.isActive === true) onAppVisible();
+        });
+      }
+    } catch (e) { /* App plugin unavailable — visibilitychange covers it */ }
+  }
+  // Inactivity: any touch or key press restarts the 2-minute timer.
+  ['pointerdown', 'keydown', 'touchstart'].forEach((ev) =>
+    window.addEventListener(ev, resetInactivityTimer, { passive: true }));
+  resetInactivityTimer();
+}
+
+/* PIN modal flows: set / change / remove / verify. 'verify' asks for the
+   current passcode (or fingerprint on native) before a sensitive action
+   such as exporting a backup, then runs pinVerifyCb. */
+let pinFlow = null; // {mode:'set'|'change'|'remove'|'verify', stage:'current'|'new'|'confirm', first:''}
+let pinVerifyCb = null;
+function openPinModal(mode, opts) {
   pinFlow = { mode, stage: mode === 'set' ? 'new' : 'current', first: '' };
+  pinVerifyCb = (opts && opts.cb) || null;
   const titles = {
     set: ['Set passcode', 'Choose a 4-digit passcode.'],
     change: ['Change passcode', 'First, enter your current passcode.'],
-    remove: ['Turn off passcode', 'Enter your current passcode to turn it off.']
+    remove: ['Turn off passcode', 'Enter your current passcode to turn it off.'],
+    verify: [(opts && opts.title) || 'Enter passcode', (opts && opts.sub) || 'Enter your passcode to continue.']
   };
   $('pinModalTitle').textContent = titles[mode][0];
   $('pinModalSub').textContent = titles[mode][1];
   $('pinError').classList.add('hidden');
+  // Fingerprint shortcut inside the modal (verify flow, native only).
+  const bioBtn = $('pinBioBtn');
+  if (mode === 'verify' && IS_NATIVE) {
+    bioBtn.classList.remove('hidden');
+    biometricAvailable().then((ok) => { if (!ok) bioBtn.classList.add('hidden'); });
+  } else {
+    bioBtn.classList.add('hidden');
+  }
+  if (pinLockoutRemainingMs() > 0) showLockoutCountdown($('pinError'));
   $('pinModal').classList.remove('hidden');
-  buildPinPad($('pinPad'), $('pinDots'), onPinModalDigit);
+  buildPinPad($('pinPad'), $('pinDots'), onPinModalDigit, () => pinLockoutRemainingMs() > 0);
 }
-function closePinModal() { $('pinModal').classList.add('hidden'); pinFlow = null; }
+function closePinModal() { $('pinModal').classList.add('hidden'); pinFlow = null; pinVerifyCb = null; }
+/* Ask for the passcode (fingerprint first on native) before a sensitive
+   action. Runs cb() only after a successful unlock; with no passcode set
+   it just runs cb() straight away. */
+function requestPasscode(title, sub, cb) {
+  if (!pinStored()) { cb(); return; }
+  if (IS_NATIVE) {
+    tryNativeBiometric().then((ok) => {
+      if (ok) { registerPinAttempt(true); cb(); }
+      else openPinModal('verify', { title, sub, cb });
+    });
+    return;
+  }
+  openPinModal('verify', { title, sub, cb });
+}
 function pinModalWrong(msg) {
   const err = $('pinError');
   err.textContent = msg;
@@ -2511,8 +2698,14 @@ function pinModalWrong(msg) {
 async function onPinModalDigit(pin) {
   if (!pinFlow) return;
   if (pinFlow.stage === 'current') {
+    if (pinLockoutRemainingMs() > 0) { showLockoutCountdown($('pinError')); return; }
     if (await verifyPin(pin)) {
-      if (pinFlow.mode === 'remove') {
+      registerPinAttempt(true);
+      if (pinFlow.mode === 'verify') {
+        const cb = pinVerifyCb; pinVerifyCb = null;
+        closePinModal();
+        if (cb) cb();
+      } else if (pinFlow.mode === 'remove') {
         clearPin();
         closePinModal();
         toast('Passcode turned off 🔓');
@@ -2523,6 +2716,8 @@ async function onPinModalDigit(pin) {
         $('pinError').classList.add('hidden');
       }
     } else {
+      registerPinAttempt(false);
+      if (pinLockoutRemainingMs() > 0) { showLockoutCountdown($('pinError')); return; }
       pinModalWrong('That\'s not the current passcode — try again.');
     }
     return;
@@ -2631,9 +2826,9 @@ function initUI() {
   $('homeGratCard').addEventListener('click', goGrat);
   $('homeGratCard').addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goGrat(); } });
 
-  // More bottom sheet (header ⋯ button + Home "More" card).
+  // More bottom sheet (header ⋯ button — More's home since the redundant
+  // Home "More" card was removed; nothing may sit below the bottom nav).
   $('moreBtn').addEventListener('click', openMore);
-  $('homeMoreBtn').addEventListener('click', openMore);
   $('moreCloseBtn').addEventListener('click', closeMore);
   $('moreModal').addEventListener('click', (e) => { if (e.target === $('moreModal')) closeMore(); });
   document.querySelectorAll('.more-item').forEach((b) => {
@@ -2643,9 +2838,10 @@ function initUI() {
       if (action === 'gratitude') switchTab('gratitude');
       else if (action === 'plan') switchTab('plan');
       else if (action === 'settings') switchTab('settings');
-      else if (action === 'export') exportData();
+      else if (action === 'export') exportDataGated();
       else if (action === 'import') $('importFile').click();
       else if (action === 'setup') openSetup();
+      else if (action === 'lock') lockNow();
     });
   });
 
@@ -2759,6 +2955,20 @@ function initUI() {
   $('setPinBtn').addEventListener('click', () => openPinModal('set'));
   $('changePinBtn').addEventListener('click', () => openPinModal('change'));
   $('removePinBtn').addEventListener('click', () => openPinModal('remove'));
+  // Fingerprint buttons: lock screen + passcode modal (native only — the
+  // buttons stay hidden on the web, see showLockScreen / openPinModal).
+  $('lockBioBtn').addEventListener('click', async () => {
+    if (await tryNativeBiometric()) unlockSuccess();
+  });
+  $('pinBioBtn').addEventListener('click', async () => {
+    if (!pinFlow || pinFlow.mode !== 'verify') return;
+    if (await tryNativeBiometric()) {
+      registerPinAttempt(true);
+      const cb = pinVerifyCb; pinVerifyCb = null;
+      closePinModal();
+      if (cb) cb();
+    }
+  });
   $('pinCancelBtn').addEventListener('click', closePinModal);
   $('pinModal').addEventListener('click', (e) => { if (e.target === $('pinModal')) closePinModal(); });
   $('lockForgotBtn').addEventListener('click', () => {
@@ -2932,7 +3142,7 @@ function initUI() {
     persist();
   });
 
-  $('exportBtn').addEventListener('click', exportData);
+  $('exportBtn').addEventListener('click', exportDataGated);
   $('importBtn').addEventListener('click', () => $('importFile').click());
   $('importFile').addEventListener('change', (e) => {
     if (e.target.files && e.target.files[0]) importData(e.target.files[0]);
@@ -2957,6 +3167,7 @@ try {
   initAuth();
   initUI();
   initPWA();
+  initAutoLock(); // privacy veil + auto-lock on background / inactivity
   maybeLockOnLaunch(); // passcode set? PIN pad first, before any content
 } catch (e) {
   console.error('Boot failed partway — showing the app anyway:', e);

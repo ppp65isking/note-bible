@@ -15,6 +15,12 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@400;500;600;700&family=Nunito:wght@400;600;700;800&family=Caveat:wght@500;600;700&display=swap" rel="stylesheet">
+  <script>
+    /* Android-only UI variant: tag <html> before first paint so the
+       Android liquid-glass rules apply from the very first frame.
+       iOS / desktop never get this attribute, so they look exactly as before. */
+    try { if (/Android/i.test(navigator.userAgent)) document.documentElement.setAttribute('data-platform', 'android'); } catch (e) { /* ignore */ }
+  </script>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body data-background="dots">
@@ -130,12 +136,6 @@
           <input id="quickGratInput" type="text" placeholder="Something you're thankful for…">
           <button id="quickGratBtn" class="btn btn-primary">Add</button>
         </div>
-      </div>
-
-      <div class="card more-card">
-        <div class="card-label">✨ more</div>
-        <p class="muted">Thanks, reading plan, settings, backup &amp; more — all in one place.</p>
-        <button id="homeMoreBtn" class="btn btn-primary btn-block">✨ More</button>
       </div>
     </section>
 
@@ -324,6 +324,9 @@
       <button class="tab-btn" data-tab="notes">📝<span>Notes</span></button>
       <button class="tab-btn" data-tab="prayers">🙏<span>Prayers</span></button>
     </nav>
+    <!-- Android only: gradient+blur skirt under the floating pill so page
+         content can never peek out below the nav (the "✨ MORE" strip). -->
+    <div class="nav-scrim" aria-hidden="true"></div>
   </main>
 
   <!-- ============ NOTE EDITOR MODAL ============ -->
@@ -512,6 +515,7 @@
       <div id="pinDots" class="pin-dots"><span></span><span></span><span></span><span></span></div>
       <div id="pinPad" class="pin-pad"></div>
       <p id="pinError" class="auth-error hidden"></p>
+      <button id="pinBioBtn" class="btn btn-primary btn-block hidden" type="button">👆 Use fingerprint instead</button>
       <div class="modal-actions">
         <button id="pinCancelBtn" class="btn">Cancel</button>
       </div>
@@ -527,6 +531,7 @@
       <div id="lockDots" class="pin-dots"><span></span><span></span><span></span><span></span></div>
       <div id="lockPad" class="pin-pad"></div>
       <p id="lockError" class="auth-error hidden"></p>
+      <button id="lockBioBtn" class="btn btn-primary btn-block hidden" type="button">👆 Unlock with fingerprint</button>
       <button id="lockForgotBtn" class="link-btn">Forgot passcode? Reset app data</button>
       <p class="muted small">This is an in-app passcode — the web can't use your phone's lock screen. Resetting erases notes on this device; if you're signed in, your synced data comes back when you sign in again.</p>
     </div>
@@ -544,6 +549,7 @@
         <button class="more-item" data-more="export" type="button">💾<span><b>Export my data</b><i>download a backup</i></span><span class="more-arrow">›</span></button>
         <button class="more-item" data-more="import" type="button">⬆️<span><b>Import data</b><i>restore a backup</i></span><span class="more-arrow">›</span></button>
         <button class="more-item" data-more="setup" type="button">✨<span><b>Redo my setup</b><i>name, theme, background, plan</i></span><span class="more-arrow">›</span></button>
+        <button class="more-item" data-more="lock" type="button">🔒<span><b>Lock now</b><i>lock the app right away</i></span><span class="more-arrow">›</span></button>
       </div>
       <div class="modal-actions">
         <button id="moreCloseBtn" class="btn">Close</button>
@@ -566,6 +572,15 @@
   </div>
 
   <div id="toast" class="toast hidden"></div>
+
+  <!-- Privacy veil: opaque cover shown the instant the app is backgrounded,
+       so the app-switcher thumbnail never shows notes, verses or prayers.
+       Hidden again as soon as the app comes back (the lock screen, if any,
+       takes over from there). -->
+  <div id="privacyVeil" class="privacy-veil hidden" aria-hidden="true">
+    <img src="icons/icon-192.png" alt="" class="privacy-veil-logo">
+    <p>Verse Garden 🌸</p>
+  </div>
 
   <!-- Firebase (compat SDK) — only used when firebaseConfig below is filled in -->
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
