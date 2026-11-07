@@ -17,7 +17,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@400;500;600;700&family=Nunito:wght@400;600;700;800&family=Caveat:wght@500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
 </head>
-<body data-pattern="dots">
+<body data-background="dots">
 
   <!-- Install banner -->
   <div id="installBanner" class="install-banner hidden">
@@ -85,7 +85,7 @@
       <div class="row-2">
         <div class="card mini-card">
           <div class="card-label">🔥 streak</div>
-          <p class="big-number"><span id="homeStreak">0</span> <small>days</small></p>
+          <p class="big-number"><span id="homeStreak">0</span> <small id="homeStreakUnit">days</small></p>
           <p class="muted">keep the flame alive!</p>
         </div>
         <div class="card mini-card">
@@ -116,9 +116,17 @@
         <input id="searchInput" type="search" placeholder="🔍 Search notes, verses, thoughts…">
         <button id="newNoteBtn" class="btn btn-primary">＋ New note</button>
       </div>
+      <div class="notes-toolbar-row">
+        <select id="sortSelect" class="sort-select" title="Sort notes">
+          <option value="new">Newest first</option>
+          <option value="old">Oldest first</option>
+          <option value="az">Title A–Z</option>
+        </select>
+      </div>
       <div id="tagChips" class="tag-chips"></div>
       <div id="notesGrid" class="notes-grid"></div>
       <p id="notesEmpty" class="empty-state hidden">No notes yet — plant your first verse! 🌱</p>
+      <p id="notesNoMatch" class="empty-state hidden">No notes match that search — try a different word 🔍</p>
     </section>
 
     <!-- PRAYERS -->
@@ -150,8 +158,9 @@
     <!-- READING PLAN -->
     <section id="tab-plan" class="tab-page hidden">
       <div class="card">
-        <div class="card-label">📖 30-day reading plan</div>
-        <p class="muted">John's Gospel + favorite Psalms, one reading a day.</p>
+        <div class="card-label" id="planName">📖 reading plan</div>
+        <select id="planSelect" class="plan-select"></select>
+        <p id="planSub" class="muted">Pick a plan, one reading a day.</p>
         <div class="progress"><div id="planBar" class="progress-fill"></div></div>
         <p id="planText" class="muted">0 of 30 days done</p>
         <ul id="planList" class="check-list plan-list"></ul>
@@ -172,10 +181,13 @@
           <option value="Nunito">Nunito (soft &amp; friendly)</option>
           <option value="Caveat">Caveat (handwritten)</option>
         </select>
-        <p class="field-label">Background pattern</p>
-        <select id="patternSelect">
+        <p class="field-label">Background</p>
+        <select id="backgroundSelect">
           <option value="dots">Dots</option>
+          <option value="waves">Waves</option>
+          <option value="petals">Petals</option>
           <option value="hearts">Hearts</option>
+          <option value="gradient">Soft gradient</option>
           <option value="none">Plain</option>
         </select>
         <label class="toggle-row">
@@ -198,11 +210,17 @@
         <div class="card-label">🌸 about</div>
         <p class="muted small">Verse Garden — a cute little home for your verses, thoughts, prayers and gratitude. Made with 💜. Verses are fetched from bible-api.com (World English Bible). Works offline in local mode; sign in to sync across devices.</p>
         <p id="accountLine" class="muted small"></p>
+        <div class="inline-row" style="margin-top: 12px;">
+          <button id="redoSetupBtn" class="btn">✨ Redo my setup</button>
+        </div>
       </div>
     </section>
 
-    <!-- Bottom nav -->
-    <nav class="bottom-nav">
+    <!-- Bottom nav (liquid glass) -->
+    <nav class="bottom-nav" id="bottomNav">
+      <div class="bottom-nav-glass" aria-hidden="true"></div>
+      <div class="nav-lens" id="navLens" aria-hidden="true"></div>
+      <div class="nav-glow" id="navGlow" aria-hidden="true"></div>
       <button class="tab-btn active" data-tab="home">🏠<span>Home</span></button>
       <button class="tab-btn" data-tab="notes">📝<span>Notes</span></button>
       <button class="tab-btn" data-tab="prayers">🙏<span>Prayers</span></button>
@@ -255,6 +273,58 @@
       <div class="modal-actions">
         <button id="closeShareBtn" class="btn">Close</button>
         <button id="downloadShareBtn" class="btn btn-primary">⬇️ Download image</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ SETUP MODAL ("Make it yours") ============ -->
+  <div id="setupModal" class="modal hidden">
+    <div class="modal-card glass-card setup-card">
+      <div class="setup-dots" id="setupDots">
+        <span class="setup-dot active"></span><span class="setup-dot"></span><span class="setup-dot"></span><span class="setup-dot"></span>
+      </div>
+
+      <div class="setup-step" data-step="1">
+        <h2>Welcome to your garden 🌸</h2>
+        <p class="muted">Let's make it yours. What should we call you?</p>
+        <label class="field-label" for="setupName">Your name</label>
+        <input id="setupName" type="text" placeholder="e.g. Sophia" maxlength="30">
+        <p class="muted small">Optional — leave it blank and we'll just call you friend 💜</p>
+      </div>
+
+      <div class="setup-step hidden" data-step="2">
+        <h2>Pick a theme 🎨</h2>
+        <p class="muted">Tap one — it changes live so you can see it!</p>
+        <div id="setupThemes" class="swatches setup-swatches"></div>
+        <p class="field-label">Font</p>
+        <select id="setupFont">
+          <option value="Quicksand">Quicksand (round &amp; cute)</option>
+          <option value="Nunito">Nunito (soft &amp; friendly)</option>
+          <option value="Caveat">Caveat (handwritten)</option>
+        </select>
+        <label class="toggle-row">
+          <span>🌙 Dark mode</span>
+          <input id="setupDark" type="checkbox">
+        </label>
+      </div>
+
+      <div class="setup-step hidden" data-step="3">
+        <h2>Pick a background 🌈</h2>
+        <p class="muted">A little texture behind everything.</p>
+        <div id="setupBackgrounds" class="setup-options"></div>
+      </div>
+
+      <div class="setup-step hidden" data-step="4">
+        <h2>Pick a reading plan 📖</h2>
+        <p class="muted">One short reading a day. You can switch plans anytime in the Plan tab.</p>
+        <div id="setupPlans" class="setup-options"></div>
+      </div>
+
+      <div class="modal-actions">
+        <button id="setupBackBtn" class="btn hidden">← Back</button>
+        <span class="spacer"></span>
+        <button id="setupSkipBtn" class="link-btn" style="width:auto; margin:0;">Skip setup</button>
+        <button id="setupNextBtn" class="btn btn-primary">Next →</button>
       </div>
     </div>
   </div>

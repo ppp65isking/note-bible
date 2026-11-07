@@ -1,5 +1,5 @@
 /* Verse Garden service worker — app-shell cache-first, CDN + API network-first */
-const CACHE_NAME = 'verse-garden-v1';
+const CACHE_NAME = 'verse-garden-v2';
 const APP_SHELL = [
   './',
   './index.html',

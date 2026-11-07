@@ -60,7 +60,19 @@ const THEMES = {
   mint:     { name: 'Mint 🌿',     accent: '#10b981', soft: '#d1fae5', bg: '#ecfdf5' },
   rose:     { name: 'Rose 🌹',     accent: '#f472b6', soft: '#fce7f3', bg: '#fff1f5' },
   sky:      { name: 'Sky 🩵',      accent: '#38bdf8', soft: '#e0f2fe', bg: '#f0f9ff' },
-  honey:    { name: 'Honey 🍯',    accent: '#f59e0b', soft: '#fef3c7', bg: '#fffbeb' }
+  honey:    { name: 'Honey 🍯',    accent: '#f59e0b', soft: '#fef3c7', bg: '#fffbeb' },
+  ocean:    { name: 'Ocean 🌊',    accent: '#0284c7', soft: '#e0f2fe', bg: '#f0f9ff' },
+  berry:    { name: 'Berry 🫐',    accent: '#be185d', soft: '#fce7f3', bg: '#fff1f5' },
+  forest:   { name: 'Forest 🌲',   accent: '#15803d', soft: '#dcfce7', bg: '#f0fdf4' },
+  sunset:   { name: 'Sunset 🌅',   accent: '#ea580c', soft: '#ffedd5', bg: '#fff7ed' }
+};
+const BACKGROUNDS = {
+  dots:     { name: 'Dots',     emoji: '🔘' },
+  waves:    { name: 'Waves',    emoji: '〰️' },
+  petals:   { name: 'Petals',   emoji: '🌸' },
+  hearts:   { name: 'Hearts',   emoji: '💜' },
+  gradient: { name: 'Soft gradient', emoji: '🌈' },
+  none:     { name: 'Plain',    emoji: '⬜' }
 };
 const DARK = { bg: '#1d1926', card: '#2b2540' };
 
@@ -119,30 +131,100 @@ const VOTD = [
   { ref: 'Psalm 118:24', text: 'This is the day that the LORD has made. We will rejoice and be glad in it!' }
 ];
 
-/* 30-day reading plan: John's Gospel, then favorite Psalms */
-const PLAN = [
-  ...Array.from({ length: 21 }, (_, i) => ({ day: i + 1, title: 'Gospel of John ' + (i + 1), ref: 'John ' + (i + 1) })),
-  { day: 22, title: 'Psalm 1 — the blessed life', ref: 'Psalm 1' },
-  { day: 23, title: 'Psalm 19 — the heavens declare', ref: 'Psalm 19' },
-  { day: 24, title: 'Psalm 23 — the Shepherd', ref: 'Psalm 23' },
-  { day: 25, title: 'Psalm 27 — light & salvation', ref: 'Psalm 27' },
-  { day: 26, title: 'Psalm 34 — taste and see', ref: 'Psalm 34' },
-  { day: 27, title: 'Psalm 46 — our refuge', ref: 'Psalm 46' },
-  { day: 28, title: 'Psalm 91 — under His wings', ref: 'Psalm 91' },
-  { day: 29, title: 'Psalm 121 — my help comes', ref: 'Psalm 121' },
-  { day: 30, title: 'Psalm 139 — wonderfully made', ref: 'Psalm 139' }
-];
+/* Reading plans — each plan keeps its own progress, so switching plans
+   never loses where you were on another one. */
+const PLANS = {
+  john30: {
+    id: 'john30', name: 'John + Psalms', emoji: '📖',
+    subtitle: "John's Gospel + favorite Psalms, one reading a day.",
+    days: [
+      ...Array.from({ length: 21 }, (_, i) => ({ day: i + 1, title: 'Gospel of John ' + (i + 1), ref: 'John ' + (i + 1) })),
+      { day: 22, title: 'Psalm 1 — the blessed life', ref: 'Psalm 1' },
+      { day: 23, title: 'Psalm 19 — the heavens declare', ref: 'Psalm 19' },
+      { day: 24, title: 'Psalm 23 — the Shepherd', ref: 'Psalm 23' },
+      { day: 25, title: 'Psalm 27 — light & salvation', ref: 'Psalm 27' },
+      { day: 26, title: 'Psalm 34 — taste and see', ref: 'Psalm 34' },
+      { day: 27, title: 'Psalm 46 — our refuge', ref: 'Psalm 46' },
+      { day: 28, title: 'Psalm 91 — under His wings', ref: 'Psalm 91' },
+      { day: 29, title: 'Psalm 121 — my help comes', ref: 'Psalm 121' },
+      { day: 30, title: 'Psalm 139 — wonderfully made', ref: 'Psalm 139' }
+    ]
+  },
+  fresh7: {
+    id: 'fresh7', name: 'Fresh Start', emoji: '🌱',
+    subtitle: 'A gentle 7-day week to begin — one beloved verse a day.',
+    days: [
+      { day: 1, title: 'Psalm 23 — the Shepherd', ref: 'Psalm 23' },
+      { day: 2, title: 'John 3:16 — God so loved', ref: 'John 3:16' },
+      { day: 3, title: 'Philippians 4:13 — strength', ref: 'Philippians 4:13' },
+      { day: 4, title: 'Proverbs 3:5 — trust', ref: 'Proverbs 3:5' },
+      { day: 5, title: 'Romans 8:28 — all things for good', ref: 'Romans 8:28' },
+      { day: 6, title: 'Matthew 11:28 — rest', ref: 'Matthew 11:28' },
+      { day: 7, title: 'Jeremiah 29:11 — hope and a future', ref: 'Jeremiah 29:11' }
+    ]
+  },
+  proverbs31: {
+    id: 'proverbs31', name: 'Proverbs', emoji: '🦉',
+    subtitle: 'One chapter of Proverbs a day — 31 days of wisdom.',
+    days: Array.from({ length: 31 }, (_, i) => ({ day: i + 1, title: 'Proverbs ' + (i + 1), ref: 'Proverbs ' + (i + 1) }))
+  },
+  psalms14: {
+    id: 'psalms14', name: 'Psalms of Comfort', emoji: '🕊️',
+    subtitle: 'Two weeks of comfort and hope from the Psalms.',
+    days: [
+      { day: 1, title: 'Psalm 1 — the blessed life', ref: 'Psalm 1' },
+      { day: 2, title: 'Psalm 19 — the heavens declare', ref: 'Psalm 19' },
+      { day: 3, title: 'Psalm 23 — the Shepherd', ref: 'Psalm 23' },
+      { day: 4, title: 'Psalm 27 — light & salvation', ref: 'Psalm 27' },
+      { day: 5, title: 'Psalm 34 — taste and see', ref: 'Psalm 34' },
+      { day: 6, title: 'Psalm 42 — thirsting for God', ref: 'Psalm 42' },
+      { day: 7, title: 'Psalm 46 — our refuge', ref: 'Psalm 46' },
+      { day: 8, title: 'Psalm 63 — my soul thirsts', ref: 'Psalm 63' },
+      { day: 9, title: 'Psalm 84 — lovely dwelling', ref: 'Psalm 84' },
+      { day: 10, title: 'Psalm 91 — under His wings', ref: 'Psalm 91' },
+      { day: 11, title: 'Psalm 103 — bless the Lord', ref: 'Psalm 103' },
+      { day: 12, title: 'Psalm 121 — my help comes', ref: 'Psalm 121' },
+      { day: 13, title: 'Psalm 139 — wonderfully made', ref: 'Psalm 139' },
+      { day: 14, title: 'Psalm 150 — praise Him', ref: 'Psalm 150' }
+    ]
+  }
+};
 
 /* ------------------------- state ------------------------- */
 const defaultState = () => ({
-  notes: [],       // {id,title,ref,text,thoughts,tags[],sticker,createdAt,updatedAt}
+  notes: [],       // {id,title,ref,text,thoughts,tags[],sticker,starred,createdAt,updatedAt}
   prayers: [],     // {id,text,answered,createdAt}
   gratitude: [],   // {id,text,createdAt}
   activity: {},    // {'YYYY-MM-DD': true}
-  planDone: {},    // {dayIndex: true}
-  theme: { preset: 'lavender', customAccent: '', font: 'Quicksand', dark: false, pattern: 'dots' }
+  plan: { id: 'john30', done: { john30: {}, fresh7: {}, proverbs31: {}, psalms14: {} } },
+  profile: { name: '', setupDone: false },
+  theme: { preset: 'lavender', customAccent: '', font: 'Quicksand', dark: false, background: 'dots' }
 });
 let state = defaultState();
+
+/* Migrate older saved state into the current shape (used by loadLocal
+   and importData): old flat planDone → per-plan progress, old
+   theme.pattern → theme.background. */
+function migrateState(parsed) {
+  const next = Object.assign(defaultState(), parsed);
+  next.theme = Object.assign(defaultState().theme, parsed.theme || {});
+  // theme.pattern (old) → theme.background
+  if (!parsed.theme || parsed.theme.background == null) {
+    const oldPattern = parsed.theme && parsed.theme.pattern;
+    if (oldPattern && BACKGROUNDS[oldPattern]) next.theme.background = oldPattern;
+  }
+  if (!BACKGROUNDS[next.theme.background]) next.theme.background = 'dots';
+  if (!THEMES[next.theme.preset]) next.theme.preset = 'lavender';
+  // old flat planDone → per-plan progress on the default plan
+  next.plan = Object.assign(defaultState().plan, parsed.plan || {});
+  next.plan.done = Object.assign(defaultState().plan.done, (parsed.plan && parsed.plan.done) || {});
+  if (parsed.planDone && Object.keys(parsed.planDone).length) {
+    next.plan.done.john30 = Object.assign({}, next.plan.done.john30, parsed.planDone);
+  }
+  if (!PLANS[next.plan.id]) next.plan.id = 'john30';
+  next.profile = Object.assign(defaultState().profile, parsed.profile || {});
+  return next;
+}
 
 /* ------------------------- helpers ------------------------- */
 const $ = (id) => document.getElementById(id);
@@ -171,9 +253,7 @@ function loadLocal() {
   try {
     const raw = localStorage.getItem(LS_KEY);
     if (!raw) return;
-    const parsed = JSON.parse(raw);
-    state = Object.assign(defaultState(), parsed);
-    state.theme = Object.assign(defaultState().theme, parsed.theme || {});
+    state = migrateState(JSON.parse(raw));
   } catch (e) { /* corrupted storage — start fresh */ }
 }
 
@@ -190,7 +270,7 @@ async function syncToFirestore() {
       }
     }
     batch.set(db.collection('users').doc(firebaseUser.uid).collection('meta').doc('settings'),
-      { theme: state.theme, activity: state.activity, planDone: state.planDone }, { merge: true });
+      { theme: state.theme, activity: state.activity, plan: state.plan, profile: state.profile }, { merge: true });
     await batch.commit();
   } catch (e) { console.warn('Firestore sync failed:', e); }
 }
@@ -216,7 +296,16 @@ async function loadFromFirestore() {
         const m = meta.data();
         if (m.theme) state.theme = Object.assign(defaultState().theme, m.theme);
         if (m.activity) state.activity = m.activity;
-        if (m.planDone) state.planDone = m.planDone;
+        // new per-plan progress; fall back to the old flat planDone
+        if (m.plan) {
+          state.plan = Object.assign(defaultState().plan, m.plan);
+          state.plan.done = Object.assign(defaultState().plan.done, m.plan.done || {});
+          if (!PLANS[state.plan.id]) state.plan.id = 'john30';
+        } else if (m.planDone) {
+          state.plan.done.john30 = Object.assign({}, state.plan.done.john30, m.planDone);
+        }
+        if (m.profile) state.profile = Object.assign(defaultState().profile, m.profile);
+        if (!BACKGROUNDS[state.theme.background]) state.theme.background = 'dots';
       }
       saveLocal();
     }
@@ -247,17 +336,23 @@ function applyTheme() {
   root.style.setProperty('--accent-soft', c.soft);
   root.style.setProperty('--bg', c.bg);
   root.style.setProperty('--card', c.card);
+  // liquid-glass tint + finger glow follow the theme accent
+  root.style.setProperty('--glass-tint', c.accent + '4d');
+  root.style.setProperty('--glass-glow', c.accent + '8c');
   root.dataset.theme = state.theme.dark ? 'dark' : 'light';
-  document.body.dataset.pattern = state.theme.pattern || 'dots';
+  document.body.dataset.background = state.theme.background || 'dots';
   document.body.style.fontFamily = "'" + state.theme.font + "', system-ui, sans-serif";
   const meta = document.querySelector('meta[name="theme-color"]');
   if (meta) meta.setAttribute('content', c.accent);
   // sync settings UI
   const cc = $('customColor'); if (cc) cc.value = c.accent;
   const fs = $('fontSelect'); if (fs) fs.value = state.theme.font;
-  const ps = $('patternSelect'); if (ps) ps.value = state.theme.pattern;
+  const bs = $('backgroundSelect'); if (bs) bs.value = state.theme.background || 'dots';
   const dt = $('darkToggle'); if (dt) dt.checked = !!state.theme.dark;
   document.querySelectorAll('#themeSwatches .swatch').forEach((b) => {
+    b.classList.toggle('active', b.dataset.preset === state.theme.preset && !state.theme.customAccent);
+  });
+  document.querySelectorAll('#setupThemes .swatch').forEach((b) => {
     b.classList.toggle('active', b.dataset.preset === state.theme.preset && !state.theme.customAccent);
   });
 }
@@ -302,6 +397,7 @@ function renderStreak() {
   const s = computeStreak();
   $('streakCount').textContent = s;
   $('homeStreak').textContent = s;
+  $('homeStreakUnit').textContent = s === 1 ? 'day' : 'days';
 }
 
 /* ------------------------- auth ------------------------- */
@@ -319,20 +415,35 @@ function friendlyAuthError(e) {
   if (code.includes('weak-password')) return 'Password needs at least 6 characters.';
   if (code.includes('invalid-email')) return 'That email doesn\'t look quite right.';
   if (code.includes('popup-closed')) return 'The Google window closed before finishing — try again.';
+  if (code.includes('unauthorized-domain')) return 'This site isn\'t allowed for Google sign-in yet — add ppp65isking.github.io in Firebase → Authentication → Settings → Authorized domains.';
   return 'Something went wrong signing in. Please try again.';
 }
+let setupAutoShown = false;
 function showApp() {
   $('authScreen').classList.add('hidden');
   $('app').classList.remove('hidden');
   const inLocal = !firebaseUser;
-  $('localBanner').classList.toggle('hidden', !inLocal);
+  const banner = $('localBanner');
+  banner.classList.toggle('hidden', !inLocal);
+  if (inLocal) {
+    // Only mention the Firebase config when it genuinely isn't set up.
+    banner.textContent = FIREBASE_READY
+      ? '🌱 Local mode — your notes save on this device only. Sign in anytime to sync across devices.'
+      : '🌱 Local mode — your notes save on this device only. Add your Firebase config to enable login & sync.';
+  }
+  const name = (state.profile && state.profile.name) || '';
   $('helloLine').textContent = firebaseUser
-    ? 'welcome back, ' + (firebaseUser.displayName || firebaseUser.email || 'friend') + ' 🌷'
+    ? 'welcome back, ' + (name || firebaseUser.displayName || firebaseUser.email || 'friend') + ' 🌷'
     : 'local mode — sign in to sync 🌷';
   $('accountLine').textContent = firebaseUser
     ? 'Signed in as ' + firebaseUser.email + ' — your data syncs across devices.'
     : 'Not signed in. Your notes live on this device only.';
   renderAll();
+  // First launch: open the "Make it yours" setup once.
+  if (!state.profile.setupDone && !setupAutoShown) {
+    setupAutoShown = true;
+    setTimeout(() => openSetup(), 400);
+  }
 }
 function showAuthScreen() {
   $('app').classList.add('hidden');
@@ -363,8 +474,10 @@ async function handleGoogleSignIn() {
   if (!auth) { showAuthError('Google sign-in isn\'t available in local mode.'); return; }
   try {
     const provider = new firebase.auth.GoogleAuthProvider();
-    await auth.signInWithPopup(provider);
-    toast('Welcome back! 🌷');
+    // Popups don't work inside an installed PWA (standalone mode) — they open
+    // and close instantly, and never come back. Redirect navigates the whole
+    // app to Google and back, which works in the PWA and in the browser.
+    await auth.signInWithRedirect(provider);
   } catch (e) {
     showAuthError(friendlyAuthError(e));
   }
@@ -404,6 +517,9 @@ function initAuth() {
         showAuthScreen();
       }
     });
+    // After a Google redirect sign-in, Firebase finishes it when the app reloads.
+    // Surface any error (e.g. domain not authorized) instead of failing silently.
+    auth.getRedirectResult().catch((e) => showAuthError(friendlyAuthError(e)));
   }
 }
 
@@ -558,6 +674,8 @@ function stickerEmojiForCanvas(id) {
 
 /* ------------------------- notes ------------------------- */
 let activeTag = 'all';
+let favOnly = false;
+let sortMode = 'new';
 let editorSticker = 'svg:heart';
 
 function allTags() {
@@ -568,6 +686,12 @@ function allTags() {
 function renderTagChips() {
   const wrap = $('tagChips');
   wrap.innerHTML = '';
+  // ⭐ Favorites filter chip
+  const fav = document.createElement('button');
+  fav.className = 'tag-chip' + (favOnly ? ' active' : '');
+  fav.textContent = '⭐ Favorites';
+  fav.addEventListener('click', () => { favOnly = !favOnly; renderNotes(); renderTagChips(); });
+  wrap.appendChild(fav);
   const tags = ['all', ...allTags()];
   tags.forEach((tag) => {
     const b = document.createElement('button');
@@ -586,13 +710,20 @@ function renderNotes() {
       const hay = [n.title, n.ref, n.text, n.thoughts, (n.tags || []).join(' ')].join(' ').toLowerCase();
       const okQ = !q || hay.includes(q);
       const okTag = activeTag === 'all' || (n.tags || []).includes(activeTag);
-      return okQ && okTag;
+      const okFav = !favOnly || !!n.starred;
+      return okQ && okTag && okFav;
     })
-    .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
-  $('notesEmpty').classList.toggle('hidden', state.notes.length > 0);
+    .sort((a, b) => {
+      if (sortMode === 'old') return (a.updatedAt || 0) - (b.updatedAt || 0);
+      if (sortMode === 'az') return (a.title || '').localeCompare(b.title || '');
+      return (b.updatedAt || 0) - (a.updatedAt || 0);
+    });
+  const hasNotes = state.notes.length > 0;
+  $('notesEmpty').classList.toggle('hidden', hasNotes);
+  $('notesNoMatch').classList.toggle('hidden', !(hasNotes && list.length === 0));
   list.forEach((n) => {
     const card = document.createElement('article');
-    card.className = 'note-card';
+    card.className = 'note-card' + (n.starred ? ' starred' : '');
     card.innerHTML =
       '<div class="note-sticker">' + stickerHTML(n.sticker) + '</div>' +
       '<h3>' + esc(n.title || 'Untitled') + '</h3>' +
@@ -604,10 +735,17 @@ function renderNotes() {
         : '') +
       '<p class="note-date">' + fmtDate(n.updatedAt || n.createdAt) + '</p>' +
       '<div class="note-actions">' +
+      '<button class="btn note-star' + (n.starred ? ' starred' : '') + '" data-act="star" title="Favorite">' + (n.starred ? '⭐' : '☆') + '</button>' +
       '<button class="btn" data-act="share">💌 Share</button>' +
       '<button class="btn" data-act="edit">✏️ Edit</button>' +
       '<button class="btn btn-danger" data-act="delete">🗑️</button>' +
       '</div>';
+    card.querySelector('[data-act="star"]').addEventListener('click', () => {
+      n.starred = !n.starred;
+      persist();
+      renderNotes();
+      toast(n.starred ? 'Added to favorites ⭐' : 'Removed from favorites');
+    });
     card.querySelector('[data-act="share"]').addEventListener('click', () => shareNote(n));
     card.querySelector('[data-act="edit"]').addEventListener('click', () => openNoteEditor(n));
     card.querySelector('[data-act="delete"]').addEventListener('click', () => {
@@ -681,6 +819,7 @@ function saveNoteFromEditor() {
     thoughts: $('noteThoughts').value.trim(),
     tags: $('noteTags').value.split(',').map((t) => t.trim().toLowerCase()).filter(Boolean),
     sticker: editorSticker,
+    starred: existing ? !!existing.starred : false,
     createdAt: existing ? existing.createdAt : Date.now(),
     updatedAt: Date.now()
   };
@@ -766,30 +905,71 @@ function addGratitude(text) {
 }
 
 /* ------------------------- reading plan ------------------------- */
+function activePlan() {
+  return PLANS[state.plan.id] || PLANS.john30;
+}
+function planDoneMap() {
+  if (!state.plan.done[state.plan.id]) state.plan.done[state.plan.id] = {};
+  return state.plan.done[state.plan.id];
+}
 function planProgress() {
-  const done = PLAN.filter((p, i) => state.planDone[i]).length;
-  return { done, total: PLAN.length, pct: Math.round((done / PLAN.length) * 100) };
+  const plan = activePlan();
+  const doneMap = planDoneMap();
+  const done = plan.days.filter((p, i) => doneMap[i]).length;
+  return { done, total: plan.days.length, pct: Math.round((done / plan.days.length) * 100) };
+}
+function buildPlanSelect() {
+  const sel = $('planSelect');
+  sel.innerHTML = '';
+  for (const p of Object.values(PLANS)) {
+    const opt = document.createElement('option');
+    opt.value = p.id;
+    opt.textContent = p.emoji + ' ' + p.name + ' — ' + p.days.length + ' days';
+    sel.appendChild(opt);
+  }
+  sel.value = state.plan.id;
+}
+function switchPlan(newId) {
+  if (!PLANS[newId] || newId === state.plan.id) return;
+  const current = activePlan();
+  const next = PLANS[newId];
+  const hasProgress = Object.keys(planDoneMap()).length > 0;
+  if (hasProgress && !confirm(
+    'Switch to the ' + next.name + ' plan? Your progress on ' + current.name +
+    ' is saved — you can switch back anytime. The new plan starts fresh.')) {
+    $('planSelect').value = state.plan.id;
+    return;
+  }
+  state.plan.id = newId;
+  planDoneMap();
+  persist();
+  renderPlan();
+  toast('Switched to the ' + next.name + ' plan ' + next.emoji);
 }
 function renderPlan() {
+  const plan = activePlan();
+  const doneMap = planDoneMap();
   const { done, total, pct } = planProgress();
+  $('planName').textContent = plan.emoji + ' ' + plan.name + ' plan';
+  $('planSub').textContent = plan.subtitle;
   $('planBar').style.width = pct + '%';
   $('planBarMini').style.width = pct + '%';
   $('planText').textContent = done + ' of ' + total + ' days done';
   $('planPct').textContent = pct;
-  const firstOpen = PLAN.findIndex((p, i) => !state.planDone[i]);
+  const firstOpen = plan.days.findIndex((p, i) => !doneMap[i]);
   $('todayReading').textContent = firstOpen === -1
     ? 'You finished the whole plan! 🎉'
-    : 'Day ' + PLAN[firstOpen].day + ': ' + PLAN[firstOpen].title + ' (' + PLAN[firstOpen].ref + ')';
+    : 'Day ' + plan.days[firstOpen].day + ': ' + plan.days[firstOpen].title + ' (' + plan.days[firstOpen].ref + ')';
   const list = $('planList');
   list.innerHTML = '';
-  PLAN.forEach((p, i) => {
+  plan.days.forEach((p, i) => {
     const li = document.createElement('li');
-    if (state.planDone[i]) li.className = 'done';
+    if (doneMap[i]) li.className = 'done';
     const cb = document.createElement('input');
     cb.type = 'checkbox';
-    cb.checked = !!state.planDone[i];
+    cb.checked = !!doneMap[i];
     cb.addEventListener('change', () => {
-      state.planDone[i] = cb.checked;
+      doneMap[i] = cb.checked;
       if (cb.checked) recordActivity();
       persist();
       renderPlan();
@@ -921,8 +1101,7 @@ function importData(file) {
     try {
       const parsed = JSON.parse(reader.result);
       if (!parsed || typeof parsed !== 'object') throw new Error('bad file');
-      state = Object.assign(defaultState(), parsed);
-      state.theme = Object.assign(defaultState().theme, parsed.theme || {});
+      state = migrateState(parsed);
       persist();
       applyTheme();
       renderAll();
@@ -934,6 +1113,196 @@ function importData(file) {
   reader.readAsText(file);
 }
 
+/* ------------------------- "Make it yours" setup flow -------------------------
+   First launch (or Settings → Redo my setup): name → theme → background
+   → reading plan. Theme/background apply live as you pick them. Skipping
+   is always allowed; prefs save locally and to Firestore when signed in. */
+let setupStep = 1;
+let setupPlanId = null;
+
+function openSetup() {
+  setupStep = 1;
+  setupPlanId = state.plan.id;
+  $('setupName').value = (state.profile && state.profile.name) || '';
+  $('setupFont').value = state.theme.font;
+  $('setupDark').checked = !!state.theme.dark;
+  buildSetupThemes();
+  buildSetupBackgrounds();
+  buildSetupPlans();
+  renderSetupStep();
+  $('setupModal').classList.remove('hidden');
+}
+function closeSetup() { $('setupModal').classList.add('hidden'); }
+function finishSetup() {
+  state.profile.name = ($('setupName').value || '').trim();
+  state.profile.setupDone = true;
+  if (setupPlanId && PLANS[setupPlanId]) {
+    state.plan.id = setupPlanId;
+    planDoneMap();
+  }
+  persist();
+  applyTheme();
+  renderAll();
+  closeSetup();
+  toast('Your garden is ready! 🌸');
+}
+function renderSetupStep() {
+  document.querySelectorAll('.setup-step').forEach((el) => {
+    el.classList.toggle('hidden', +el.dataset.step !== setupStep);
+  });
+  document.querySelectorAll('#setupDots .setup-dot').forEach((dot, i) => {
+    dot.classList.toggle('active', i + 1 === setupStep);
+  });
+  $('setupBackBtn').classList.toggle('hidden', setupStep === 1);
+  $('setupNextBtn').textContent = setupStep === 4 ? 'Start my garden 🌸' : 'Next →';
+}
+function buildSetupThemes() {
+  const wrap = $('setupThemes');
+  wrap.innerHTML = '';
+  for (const [key, t] of Object.entries(THEMES)) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'swatch';
+    b.dataset.preset = key;
+    b.title = t.name;
+    b.style.background = 'linear-gradient(135deg,' + t.accent + ',' + t.soft + ')';
+    b.addEventListener('click', () => {
+      state.theme.preset = key;
+      state.theme.customAccent = '';
+      applyTheme();
+      persist();
+    });
+    wrap.appendChild(b);
+  }
+  applyTheme();
+}
+function buildSetupBackgrounds() {
+  const wrap = $('setupBackgrounds');
+  wrap.innerHTML = '';
+  for (const [key, b] of Object.entries(BACKGROUNDS)) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'setup-option' + (state.theme.background === key ? ' selected' : '');
+    btn.innerHTML = '<span class="opt-emoji">' + b.emoji + '</span>' +
+      '<span><span class="opt-name">' + esc(b.name) + '</span>' +
+      '<span class="opt-sub" style="display:block;">' +
+      (key === 'gradient' ? 'Soft color wash using your theme' : 'Subtle texture behind everything') +
+      '</span></span>';
+    btn.addEventListener('click', () => {
+      state.theme.background = key;
+      applyTheme();
+      persist();
+      wrap.querySelectorAll('.setup-option').forEach((x) => x.classList.remove('selected'));
+      btn.classList.add('selected');
+    });
+    wrap.appendChild(btn);
+  }
+}
+function buildSetupPlans() {
+  const wrap = $('setupPlans');
+  wrap.innerHTML = '';
+  for (const p of Object.values(PLANS)) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'setup-option' + (setupPlanId === p.id ? ' selected' : '');
+    btn.innerHTML = '<span class="opt-emoji">' + p.emoji + '</span>' +
+      '<span><span class="opt-name">' + esc(p.name) + ' — ' + p.days.length + ' days</span>' +
+      '<span class="opt-sub" style="display:block;">' + esc(p.subtitle) + '</span></span>';
+    btn.addEventListener('click', () => {
+      setupPlanId = p.id;
+      wrap.querySelectorAll('.setup-option').forEach((x) => x.classList.remove('selected'));
+      btn.classList.add('selected');
+    });
+    wrap.appendChild(btn);
+  }
+}
+
+/* ------------------------- liquid-glass nav: slide lens -------------------------
+   Drag a finger across the bottom bar and a glass "lens" pill follows it,
+   with a soft glow under the finger; on release it snaps to the nearest
+   tab and switches to it. Short taps still work exactly as before — the
+   click that follows a drag is swallowed so it can't double-switch. */
+let navDrag = null;
+let navDragged = false;
+
+function nearestTabBtn(x) {
+  const btns = [...document.querySelectorAll('#bottomNav .tab-btn')];
+  let best = null, bestD = Infinity;
+  for (const b of btns) {
+    const c = b.offsetLeft + b.offsetWidth / 2;
+    const d = Math.abs(c - x);
+    if (d < bestD) { bestD = d; best = b; }
+  }
+  return best;
+}
+function positionNavLens(animate) {
+  const nav = $('bottomNav');
+  const lens = $('navLens');
+  const active = nav ? nav.querySelector('.tab-btn.active') : null;
+  if (!nav || !lens || !active) return;
+  lens.style.transition = animate ? '' : 'none';
+  lens.style.transform = 'translateX(' + active.offsetLeft + 'px)';
+  lens.style.width = active.offsetWidth + 'px';
+}
+function initNavSlide() {
+  const nav = $('bottomNav');
+  if (!nav) return;
+  nav.addEventListener('pointerdown', (e) => {
+    navDrag = { x0: e.clientX, moved: false, pointerId: e.pointerId };
+    try { nav.setPointerCapture(e.pointerId); } catch (err) { /* older browsers */ }
+  });
+  nav.addEventListener('pointermove', (e) => {
+    if (!navDrag || e.pointerId !== navDrag.pointerId) return;
+    if (!navDrag.moved && Math.abs(e.clientX - navDrag.x0) < 8) return;
+    navDrag.moved = true;
+    navDragged = true;
+    const rect = nav.getBoundingClientRect();
+    const x = Math.min(Math.max(e.clientX - rect.left, 0), rect.width);
+    const lens = $('navLens');
+    const w = lens.offsetWidth || 60;
+    lens.style.transition = 'none';
+    lens.style.transform = 'translateX(' +
+      Math.min(Math.max(x - w / 2, 4), rect.width - w - 4) + 'px)';
+    const glow = $('navGlow');
+    glow.style.opacity = '1';
+    glow.style.transform = 'translate(' + (x - 32) + 'px, -50%)';
+    const nearest = nearestTabBtn(x);
+    nav.querySelectorAll('.tab-btn').forEach((b) =>
+      b.classList.toggle('slide-hover', b === nearest));
+  });
+  const endDrag = (e) => {
+    if (!navDrag || (e.pointerId !== undefined && e.pointerId !== navDrag.pointerId)) return;
+    const wasDrag = navDrag.moved;
+    const rect = nav.getBoundingClientRect();
+    const x = Math.min(Math.max(e.clientX - rect.left, 0), rect.width);
+    navDrag = null;
+    $('navGlow').style.opacity = '0';
+    nav.querySelectorAll('.tab-btn').forEach((b) => b.classList.remove('slide-hover'));
+    if (wasDrag) {
+      const btn = nearestTabBtn(x);
+      if (btn) switchTab(btn.dataset.tab);
+      positionNavLens(true);
+      // The tap-click after a drag is swallowed by the capture handler
+      // below; clear the flag shortly after as a safety net.
+      setTimeout(() => { navDragged = false; }, 300);
+    }
+  };
+  nav.addEventListener('pointerup', endDrag);
+  nav.addEventListener('pointercancel', () => {
+    navDrag = null;
+    $('navGlow').style.opacity = '0';
+    nav.querySelectorAll('.tab-btn').forEach((b) => b.classList.remove('slide-hover'));
+    positionNavLens(true);
+  });
+  // Swallow the click that follows a drag (capture phase runs first).
+  nav.addEventListener('click', (e) => {
+    if (navDragged) { e.stopPropagation(); e.preventDefault(); navDragged = false; }
+  }, true);
+  window.addEventListener('resize', () => positionNavLens(false));
+  window.addEventListener('load', () => positionNavLens(false));
+  requestAnimationFrame(() => positionNavLens(false));
+}
+
 /* ------------------------- tabs & render-all ------------------------- */
 function switchTab(name) {
   document.querySelectorAll('.tab-btn').forEach((b) =>
@@ -942,9 +1311,11 @@ function switchTab(name) {
     s.classList.toggle('hidden', s.id !== 'tab-' + name));
   if (name === 'plan') renderPlan();
   if (name === 'notes') { renderNotes(); renderTagChips(); }
+  positionNavLens(true);
 }
 function renderAll() {
   applyTheme();
+  buildPlanSelect();
   renderStreak();
   renderVOTD();
   renderNotes();
@@ -1006,6 +1377,40 @@ function initUI() {
     toast('Note deleted 🗑️');
   });
   $('searchInput').addEventListener('input', renderNotes);
+  $('sortSelect').addEventListener('change', (e) => {
+    sortMode = e.target.value;
+    renderNotes();
+  });
+
+  $('planSelect').addEventListener('change', (e) => switchPlan(e.target.value));
+
+  // "Make it yours" setup flow
+  $('redoSetupBtn').addEventListener('click', () => openSetup());
+  $('setupBackBtn').addEventListener('click', () => {
+    if (setupStep > 1) { setupStep--; renderSetupStep(); }
+  });
+  $('setupNextBtn').addEventListener('click', () => {
+    if (setupStep < 4) { setupStep++; renderSetupStep(); }
+    else finishSetup();
+  });
+  $('setupSkipBtn').addEventListener('click', () => {
+    state.profile.setupDone = true;
+    persist();
+    closeSetup();
+  });
+  $('setupFont').addEventListener('change', (e) => {
+    state.theme.font = e.target.value;
+    applyTheme();
+    persist();
+  });
+  $('setupDark').addEventListener('change', (e) => {
+    state.theme.dark = e.target.checked;
+    applyTheme();
+    persist();
+  });
+
+  // Liquid-glass nav: sliding lens
+  initNavSlide();
 
   $('lookupBtn').addEventListener('click', async () => {
     const ref = $('verseRef').value.trim();
@@ -1058,13 +1463,15 @@ function initUI() {
   });
 
   $('todayCheckBtn').addEventListener('click', () => {
-    const firstOpen = PLAN.findIndex((p, i) => !state.planDone[i]);
+    const plan = activePlan();
+    const doneMap = planDoneMap();
+    const firstOpen = plan.days.findIndex((p, i) => !doneMap[i]);
     if (firstOpen === -1) { toast('You finished the whole plan! 🎉'); return; }
-    state.planDone[firstOpen] = true;
+    doneMap[firstOpen] = true;
     recordActivity();
     persist();
     renderPlan();
-    toast('Day ' + PLAN[firstOpen].day + ' done — nice! 📖');
+    toast('Day ' + plan.days[firstOpen].day + ' done — nice! 📖');
   });
 
   $('customColor').addEventListener('input', (e) => {
@@ -1077,8 +1484,8 @@ function initUI() {
     applyTheme();
     persist();
   });
-  $('patternSelect').addEventListener('change', (e) => {
-    state.theme.pattern = e.target.value;
+  $('backgroundSelect').addEventListener('change', (e) => {
+    state.theme.background = e.target.value;
     applyTheme();
     persist();
   });
