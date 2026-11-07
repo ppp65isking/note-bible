@@ -35,6 +35,18 @@ const firebaseConfig = {
   appId: "1:243077023128:web:3f625d5e96370be77117ed",
   measurementId: "G-GKQQJ32QH9"
 };
+/* ★ GOOGLE SIGN-IN FROM THE INSTALLED APP (FedCM) ★
+   The installed PWA can't use the plain redirect flow (see
+   handleGoogleSignIn). On Android Chrome it can instead sign in with
+   FedCM — Google's account sheet opens inside the app, no redirect —
+   but that needs this app's *Web* OAuth client ID:
+   Google Cloud Console (console.cloud.google.com) → your project
+   "verse-notes" → APIs & Services → Credentials → OAuth 2.0 Client IDs
+   → "Web client (auto created by Google Service)" → copy its Client ID
+   (looks like 243077023128-xxxx.apps.googleusercontent.com) and paste it
+   here. While this is empty, Android falls back to the browser-tab path
+   and iOS goes straight to it. */
+const GOOGLE_CLIENT_ID = '243077023128-n1pb3bcqtur0cuhgeep3eq3c4iasrf30.apps.googleusercontent.com'; // Web OAuth client for project verse-notes (from google-services.json, client_type 3) — enables FedCM Google sign-in inside the Android installed PWA
 /* ==================== end of Firebase config ==================== */
 
 const FIREBASE_READY = typeof firebase !== 'undefined'
@@ -58,6 +70,15 @@ if (FIREBASE_READY) {
    fingerprint/face unlock, haptics, status-bar tint, splash screen. */
 const CAP = (typeof window !== 'undefined' && window.Capacitor) || null;
 const IS_NATIVE = !!(CAP && typeof CAP.getPlatform === 'function' && CAP.getPlatform() !== 'web');
+/* Standalone (installed PWA) detection — the Google sign-in flow depends
+   on it: a redirect that leaves the installed app can't reliably come
+   back (see handleGoogleSignIn), so standalone gets the FedCM /
+   browser-tab paths instead of the plain redirect. */
+const IS_STANDALONE = (typeof window !== 'undefined') && (
+  window.navigator.standalone === true ||
+  (typeof window.matchMedia === 'function' && window.matchMedia('(display-mode: standalone)').matches)
+);
+const IS_IOS = (typeof navigator !== 'undefined') && /iphone|ipad|ipod/i.test(navigator.userAgent);
 const _nativePlugins = {};
 function nativePlugin(name) {
   if (!IS_NATIVE || !CAP || typeof CAP.registerPlugin !== 'function') return null;
@@ -116,6 +137,13 @@ function nativeSplashHide() {
     if (p && p.catch) p.catch(() => { /* already hidden */ });
   } catch (e) { /* ignore */ }
 }
+/* Splash failsafe (native only): the app must NEVER strand on the launch
+   logo. Boot hides the splash at the end, but if anything in boot throws
+   first, this timer hides it anyway a few seconds later. On the web this
+   is a no-op — nativeSplashHide() returns immediately when not native. */
+if (IS_NATIVE) {
+  setTimeout(() => { try { nativeSplashHide(); } catch (e) { /* ignore */ } }, 4000);
+}
 
 /* ------------------------- constants ------------------------- */
 const LS_KEY = 'verseGarden.v1';
@@ -123,6 +151,7 @@ const LS_VOTD = 'verseGarden.votd.v1';
 const LS_PIN = 'verseGarden.pin.v1';        // {salt, hash} — PIN hash only, never the PIN itself
 const LS_GIPHY = 'verseGarden.giphyKey.v1'; // GIPHY API key, this device only — never synced/exported
 const LS_BIBLE = 'verseGarden.bible.v1'; // last-read book + chapter, this device only
+const LS_GOOGLE_RETURN = 'verseGarden.googleReturn.v1'; // timestamp set when a Google sign-in leaves the app for the browser
 
 const THEMES = {
   lavender: { name: 'Lavender 💜', accent: '#a78bfa', soft: '#ede9fe', bg: '#f5f0ff' },
@@ -470,6 +499,7 @@ function applyTheme() {
 }
 function buildThemeSwatches() {
   const wrap = $('themeSwatches');
+  if (!wrap) return; // boot guard: never let a missing element kill the launch
   wrap.innerHTML = '';
   for (const [key, t] of Object.entries(THEMES)) {
     const b = document.createElement('button');
@@ -530,6 +560,7 @@ function showAuthError(msg) {
 }
 function friendlyAuthError(e) {
   const code = (e && e.code) || '';
+  const all = code + ' ' + String((e && e.message) || '');
   if (code.includes('user-not-found') || code.includes('wrong-password') || code.includes('invalid-credential'))
     return 'Hmm, that email or password doesn\'t match. Try again 💜';
   if (code.includes('email-already-in-use')) return 'That email already has an account — try signing in instead.';
@@ -537,6 +568,13 @@ function friendlyAuthError(e) {
   if (code.includes('invalid-email')) return 'That email doesn\'t look quite right.';
   if (code.includes('popup-closed')) return 'The Google window closed before finishing — try again.';
   if (code.includes('unauthorized-domain')) return 'This site isn\'t allowed for Google sign-in yet — add ppp65isking.github.io in Firebase → Authentication → Settings → Authorized domains.';
+  // Native Android: Google rejects the app when its signing key's SHA-1
+  // isn't the one registered in Firebase (debug builds use a fresh key
+  // every time until the release signing step lands).
+  if (all.includes('DEVELOPER_ERROR') || all.includes('developer_error') || all.includes('DEVELOPER ERROR'))
+    return 'Google sign-in isn\'t set up for this app build yet — email sign-in still works.';
+  if (all.toLowerCase().includes('cancel'))
+    return 'Sign-in was cancelled — no worries, try again whenever 💜';
   return 'Something went wrong signing in. Please try again.';
 }
 let setupAutoShown = false;
@@ -593,12 +631,213 @@ async function handleAuthSubmit() {
 }
 async function handleGoogleSignIn() {
   if (!auth) { showAuthError('Google sign-in isn\'t available in local mode.'); return; }
+  // Native Android app: the web redirect flow can't run inside the native
+  // WebView — use the native Firebase Auth plugin instead.
+  if (IS_NATIVE) { await handleNativeGoogleSignIn(); return; }
+  // Regular browser tab (not installed): the redirect round-trip stays in
+  // the same tab and completes — this is the verified-working path.
+  if (!IS_STANDALONE) {
+    try {
+      const provider = new firebase.auth.GoogleAuthProvider();
+      await auth.signInWithRedirect(provider);
+    } catch (e) {
+      showAuthError(friendlyAuthError(e));
+    }
+    return;
+  }
+  // Installed PWA: a redirect leaves the app for a browser tab and the
+  // return trip can't reliably get back. What actually happens (verified
+  // on Android, screen recording): the app opens a Chrome Custom Tab to
+  // Google, the user picks an account, and the OS reopens the installed
+  // app fresh — Firebase's pending redirect lives in the tab's
+  // sessionStorage, which the fresh app window can't see, so
+  // getRedirectResult finds nothing and the login screen just shows again.
+  // (On iPhone it's the same, and the browser tab and the app don't even
+  // share storage, so a browser-side sign-in can't carry over at all.)
+  // Two in-app paths instead:
+  //  1. FedCM (Android Chrome): Google's account sheet opens inside the
+  //     app — no popup, no redirect. Needs GOOGLE_CLIENT_ID above.
+  //  2. Otherwise: sign in in a real browser tab and come back — on
+  //     Android the tab and the app share storage, so the app picks the
+  //     session up (see armGoogleReturnPickup). On iPhone the sign-in
+  //     stays in Safari, so the note says so plainly.
+  if (!IS_IOS) {
+    const fedcm = await tryFedcmGoogleSignIn();
+    if (fedcm === 'signed-in') return;
+    if (fedcm === 'error') return; // error already shown to the user
+    // 'unavailable' → fall through to the browser sheet below.
+  }
+  showBrowserSigninNote();
+}
+
+/* ---- FedCM (Google Identity Services) — in-app Google sign-in for the
+   Android installed PWA. FedCM shows Google's account sheet as browser
+   UI inside the app (no popup, no redirect), and the ID token it returns
+   is exchanged for a Firebase session right here. iOS Safari doesn't
+   support FedCM at all, so this path is Android-only by design.
+   Returns 'signed-in' | 'unavailable' | 'error'. */
+let _gisLoadPromise = null;
+function loadGisScript() {
+  if (window.google && window.google.accounts && window.google.accounts.id) return Promise.resolve(true);
+  if (_gisLoadPromise) return _gisLoadPromise;
+  _gisLoadPromise = new Promise((resolve) => {
+    const s = document.createElement('script');
+    s.src = 'https://accounts.google.com/gsi/client';
+    s.async = true;
+    s.onload = () => resolve(!!(window.google && window.google.accounts && window.google.accounts.id));
+    s.onerror = () => resolve(false);
+    document.head.appendChild(s);
+  });
+  return _gisLoadPromise;
+}
+async function tryFedcmGoogleSignIn() {
+  if (!GOOGLE_CLIENT_ID) return 'unavailable';
+  const gisReady = await loadGisScript();
+  if (!gisReady) return 'unavailable';
+  return new Promise((resolve) => {
+    let settled = false;
+    const done = (v) => { if (!settled) { settled = true; resolve(v); } };
+    let momentTimer = null;
+    try {
+      window.google.accounts.id.initialize({
+        client_id: GOOGLE_CLIENT_ID,
+        auto_select: false,
+        use_fedcm_for_prompt: true,
+        callback: async (response) => {
+          const token = response && response.credential;
+          if (!token) { done('unavailable'); return; }
+          try {
+            await auth.signInWithCredential(firebase.auth.GoogleAuthProvider.credential(token));
+            toast('Welcome back! 🌷');
+            done('signed-in');
+          } catch (e) {
+            showAuthError(friendlyAuthError(e));
+            done('error');
+          }
+        },
+      });
+      // The moment listener fires when the sheet shows, is skipped, or is
+      // dismissed. If nothing fires at all (no Google session in this
+      // profile, FedCM off), give up after a few seconds instead of hanging.
+      momentTimer = setTimeout(() => done('unavailable'), 6000);
+      window.google.accounts.id.prompt((n) => {
+        if (!n) return;
+        if (n.isNotDisplayed() || n.isSkippedMoment() || n.isDismissedMoment()) {
+          clearTimeout(momentTimer);
+          done('unavailable');
+        } else {
+          // Sheet is showing — stop the timer; the credential callback (or
+          // a later dismiss moment) settles this from here.
+          clearTimeout(momentTimer);
+        }
+      });
+    } catch (e) {
+      clearTimeout(momentTimer);
+      done('unavailable');
+    }
+  });
+}
+
+/* ---- "Sign in in your browser" — the fallback for the installed PWA
+   when FedCM isn't available (no client ID yet, FedCM off, or iOS).
+   The sign-in runs in a real browser tab, where the redirect round-trip
+   completes. On Android the tab and the app share storage, so when the
+   user comes back the app picks the session up (armGoogleReturnPickup).
+   On iPhone the tab and the app do NOT share storage, so the sign-in
+   stays in Safari — the note says so plainly instead of promising a
+   return that can't happen. */
+function showBrowserSigninNote() {
+  const note = $('browserSignin');
+  const text = $('browserSigninText');
+  if (!note || !text) return;
+  text.textContent = IS_IOS
+    ? 'On iPhone, Google sign-in opens in Safari and stays signed in there — you can keep using Verse Garden in Safari. Or sign in with email here, which works right in the app, no browser needed.'
+    : 'Google sign-in opens in your browser. Sign in there, then come back here — you\'ll be logged in. (Email sign-in works right here in the app too.)';
+  const openBtn = $('browserSigninOpen');
+  if (openBtn) openBtn.textContent = IS_IOS ? 'Open in Safari to sign in' : 'Open in browser to sign in';
+  note.classList.remove('hidden');
+  const checkBtn = $('browserSigninCheck');
+  if (checkBtn) {
+    let pending = null;
+    try { pending = localStorage.getItem(LS_GOOGLE_RETURN); } catch (e) { /* ignore */ }
+    checkBtn.classList.toggle('hidden', !pending);
+  }
+}
+function openBrowserSignIn() {
+  try { localStorage.setItem(LS_GOOGLE_RETURN, String(Date.now())); } catch (e) { /* private mode */ }
+  const url = location.origin + location.pathname + '?signin=google';
+  window.open(url, '_blank');
+  const checkBtn = $('browserSigninCheck');
+  if (checkBtn) checkBtn.classList.remove('hidden');
+  armGoogleReturnPickup();
+}
+
+/* When a Google sign-in was started from the app (or its browser tab),
+   the session lands in shared storage on Android — but the installed app,
+   sitting on the login screen in the background, doesn't notice until it
+   reloads. So while a return is pending, the first time the app becomes
+   visible again it reloads once to pick the session up. The flag is
+   cleared before reloading, so this can never loop. */
+let _returnPickupArmed = false;
+function armGoogleReturnPickup() {
+  if (_returnPickupArmed) return;
+  let pending = null;
+  try { pending = localStorage.getItem(LS_GOOGLE_RETURN); } catch (e) { /* ignore */ }
+  if (!pending) return;
+  const age = Date.now() - Number(pending || 0);
+  if (!Number.isFinite(age) || age > 15 * 60 * 1000) {
+    try { localStorage.removeItem(LS_GOOGLE_RETURN); } catch (e) { /* ignore */ }
+    return;
+  }
+  // Already signed in — the flag is stale.
+  if (firebaseUser) {
+    try { localStorage.removeItem(LS_GOOGLE_RETURN); } catch (e) { /* ignore */ }
+    return;
+  }
+  _returnPickupArmed = true;
+  // A sign-in may already have finished in the browser — surface the
+  // "check again" note so the user can pull the session in by hand if
+  // the automatic reload below never gets a chance to fire.
+  if (IS_STANDALONE) showBrowserSigninNote();
+  const onVisible = () => {
+    if (document.visibilityState !== 'visible') return;
+    document.removeEventListener('visibilitychange', onVisible);
+    try { localStorage.removeItem(LS_GOOGLE_RETURN); } catch (e) { /* ignore */ }
+    location.reload();
+  };
+  document.addEventListener('visibilitychange', onVisible);
+}
+/* Native Google sign-in (Android app only) via @capacitor-firebase/auth.
+   The plugin signs into the NATIVE Firebase Auth; its ID token is then
+   bridged into the web (compat) SDK so onAuthStateChanged + Firestore see
+   the same user. Requires google-services.json in android/app/ (decoded
+   from the ANDROID_GOOGLE_SERVICES_JSON secret at build time) and the
+   app's signing SHA-1 registered in Firebase — until the APK is signed
+   with that key, Google answers DEVELOPER_ERROR (see friendlyAuthError). */
+async function handleNativeGoogleSignIn() {
+  const fa = nativePlugin('FirebaseAuthentication');
+  if (!fa) {
+    showAuthError('Native Google sign-in isn\'t in this build yet — email sign-in works for now.');
+    return;
+  }
   try {
-    const provider = new firebase.auth.GoogleAuthProvider();
-    // Popups don't work inside an installed PWA (standalone mode) — they open
-    // and close instantly, and never come back. Redirect navigates the whole
-    // app to Google and back, which works in the PWA and in the browser.
-    await auth.signInWithRedirect(provider);
+    const result = await fa.signInWithGoogle();
+    // Bridge the native session into the web SDK.
+    let token = result && result.credential && result.credential.idToken;
+    if (!token) {
+      const r = await fa.getIdToken();
+      token = r && r.token;
+    }
+    if (token) {
+      await auth.signInWithCredential(firebase.auth.GoogleAuthProvider.credential(token));
+      toast('Welcome back! 🌷');
+    } else if (result && result.user) {
+      // Native sign-in worked but no token came back to bridge — the auth
+      // state settles on the next launch; ask the user to reopen the app.
+      toast('Signed in — reopen the app to finish setting up 🌷');
+    } else {
+      showAuthError('Google sign-in didn\'t finish — please try again.');
+    }
   } catch (e) {
     showAuthError(friendlyAuthError(e));
   }
@@ -607,6 +846,20 @@ function initAuth() {
   $('authSubmit').addEventListener('click', handleAuthSubmit);
   $('authPassword').addEventListener('keydown', (e) => { if (e.key === 'Enter') handleAuthSubmit(); });
   $('googleBtn').addEventListener('click', handleGoogleSignIn);
+  // Installed-app Google sign-in: the "open in browser" note (see
+  // showBrowserSigninNote) and its buttons.
+  const bsOpen = $('browserSigninOpen');
+  if (bsOpen) bsOpen.addEventListener('click', openBrowserSignIn);
+  const bsCheck = $('browserSigninCheck');
+  if (bsCheck) bsCheck.addEventListener('click', () => location.reload());
+  const bsHide = $('browserSigninHide');
+  if (bsHide) bsHide.addEventListener('click', () => $('browserSignin').classList.add('hidden'));
+  // In the installed app (not the native shell, which has its own Google
+  // path), set expectations before the user taps Google.
+  if (IS_STANDALONE && !IS_NATIVE) {
+    const hint = $('standaloneHint');
+    if (hint) hint.classList.remove('hidden');
+  }
   $('authToggle').addEventListener('click', () => {
     authMode = authMode === 'signin' ? 'signup' : 'signin';
     $('authSubmit').textContent = authMode === 'signup' ? 'Create account' : 'Sign in';
@@ -629,18 +882,37 @@ function initAuth() {
     }
   });
   if (auth) {
+    // Opened in a browser tab to sign in with Google (the installed app's
+    // "Open in browser" path appends ?signin=google): once auth state is
+    // known and there's no user yet, start the redirect flow right away.
+    // The param is stripped before redirecting, so the return URL is
+    // clean and can't re-trigger. Never auto-starts inside the installed
+    // app itself — that's the flow that can't complete.
+    let authStateFirst = true;
+    const browserSigninParams = new URLSearchParams(location.search);
     auth.onAuthStateChanged(async (user) => {
       firebaseUser = user;
       if (user) {
+        try { localStorage.removeItem(LS_GOOGLE_RETURN); } catch (e) { /* ignore */ }
         await loadFromFirestore();
         showApp();
       } else if (!localModeChosen) {
         showAuthScreen();
       }
+      if (authStateFirst) {
+        authStateFirst = false;
+        if (!user && browserSigninParams.get('signin') === 'google' && !IS_STANDALONE) {
+          history.replaceState(null, '', location.pathname + location.hash);
+          handleGoogleSignIn(); // non-standalone here → redirect flow
+        }
+      }
     });
     // After a Google redirect sign-in, Firebase finishes it when the app reloads.
     // Surface any error (e.g. domain not authorized) instead of failing silently.
     auth.getRedirectResult().catch((e) => showAuthError(friendlyAuthError(e)));
+    // A Google sign-in may have finished in a browser tab while this app
+    // sat on the login screen — reload to pick the session up on return.
+    armGoogleReturnPickup();
   }
 }
 
@@ -2330,10 +2602,7 @@ function initPWA() {
   $('installDismiss').addEventListener('click', () => $('installBanner').classList.add('hidden'));
   $('iosDismiss').addEventListener('click', () => $('iosHint').classList.add('hidden'));
   // iOS Safari has no beforeinstallprompt — show the manual hint instead.
-  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
-  const isStandalone = window.navigator.standalone === true
-    || window.matchMedia('(display-mode: standalone)').matches;
-  if (isIOS && !isStandalone) $('iosHint').classList.remove('hidden');
+  if (IS_IOS && !IS_STANDALONE) $('iosHint').classList.remove('hidden');
   window.addEventListener('appinstalled', () => {
     $('installBanner').classList.add('hidden');
     toast('Verse Garden installed! 🌸');
@@ -2670,14 +2939,25 @@ function initUI() {
 }
 
 /* ------------------------- init ------------------------- */
-loadLocal();
-buildThemeSwatches();
-applyTheme();
-initAuth();
-initUI();
-initPWA();
-maybeLockOnLaunch(); // passcode set? PIN pad first, before any content
-nativeSplashHide(); // native shell: dismiss the launch splash now the app has rendered
+/* Boot is wrapped so that no single failure can strand the app on the
+   launch splash (native) or leave a blank screen (web): the steps run in
+   order, a failure falls through to showing the app anyway, and the
+   splash is hidden in the finally — plus the 4s failsafe timer above as
+   a backstop. */
+try {
+  loadLocal();
+  buildThemeSwatches();
+  applyTheme();
+  initAuth();
+  initUI();
+  initPWA();
+  maybeLockOnLaunch(); // passcode set? PIN pad first, before any content
+} catch (e) {
+  console.error('Boot failed partway — showing the app anyway:', e);
+  try { showApp(); } catch (e2) { /* last resort: splash failsafe still fires */ }
+} finally {
+  nativeSplashHide(); // native shell: dismiss the launch splash now the app has rendered
+}
 
 // No Firebase config yet (or Firebase failed) → straight into local mode.
 if (!auth) {
