@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Verse Garden 🌸</title>
+  <meta name="description" content="A cute place to keep your favorite Bible verses, thoughts, prayers and gratitude.">
+  <meta name="theme-color" content="#a78bfa">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Verse Garden">
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" type="image/png" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@400;500;600;700&family=Nunito:wght@400;600;700;800&family=Caveat:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body data-pattern="dots">
+
+  <!-- Install banner -->
+  <div id="installBanner" class="install-banner hidden">
+    <span>📲 Add Verse Garden to your home screen!</span>
+    <button id="installBtn" class="btn btn-small">Install</button>
+    <button id="installDismiss" class="icon-btn" aria-label="Dismiss">✕</button>
+  </div>
+  <div id="iosHint" class="install-banner hidden">
+    <span>🍎 On iPhone: tap Share ⬆️ then "Add to Home Screen" to install!</span>
+    <button id="iosDismiss" class="icon-btn" aria-label="Dismiss">✕</button>
+  </div>
+
+  <!-- Local mode banner -->
+  <div id="localBanner" class="local-banner hidden">
+    🌱 Local mode — your notes save on this device only. Add your Firebase config to enable login &amp; sync.
+  </div>
+
+  <!-- ============ AUTH SCREEN ============ -->
+  <main id="authScreen" class="auth-screen hidden">
+    <div class="auth-card">
+      <img src="icons/icon-192.png" alt="Verse Garden" class="auth-logo">
+      <h1>Verse Garden</h1>
+      <p class="auth-sub">your little garden of verses, thoughts &amp; prayers 🌸</p>
+
+      <label class="field-label" for="authEmail">Email</label>
+      <input id="authEmail" type="email" placeholder="you@example.com" autocomplete="email">
+
+      <label class="field-label" for="authPassword">Password</label>
+      <input id="authPassword" type="password" placeholder="at least 6 characters" autocomplete="current-password">
+
+      <p id="authError" class="auth-error hidden"></p>
+
+      <button id="authSubmit" class="btn btn-primary btn-block">Sign in</button>
+      <button id="googleBtn" class="btn btn-block">🔍 Continue with Google</button>
+      <button id="authToggle" class="link-btn">New here? Create an account</button>
+      <button id="localBtn" class="link-btn">Continue without an account (local only)</button>
+    </div>
+  </main>
+
+  <!-- ============ APP ============ -->
+  <main id="app" class="hidden">
+    <header class="app-header">
+      <div class="brand">
+        <img src="icons/icon-192.png" alt="" class="brand-icon">
+        <div>
+          <h1>Verse Garden</h1>
+          <p id="helloLine" class="hello-line">welcome back 🌷</p>
+        </div>
+      </div>
+      <div class="header-actions">
+        <span id="streakPill" class="streak-pill" title="Daily streak">🔥 <b id="streakCount">0</b></span>
+        <button id="signOutBtn" class="icon-btn" title="Sign out">🚪</button>
+      </div>
+    </header>
+
+    <!-- HOME -->
+    <section id="tab-home" class="tab-page">
+      <div class="card votd-card">
+        <div class="card-label">🌞 verse of the day</div>
+        <p id="votdText" class="votd-text">Loading today’s verse…</p>
+        <p id="votdRef" class="votd-ref"></p>
+        <button id="votdSaveBtn" class="btn btn-small">💾 Save to my notes</button>
+      </div>
+
+      <div class="row-2">
+        <div class="card mini-card">
+          <div class="card-label">🔥 streak</div>
+          <p class="big-number"><span id="homeStreak">0</span> <small>days</small></p>
+          <p class="muted">keep the flame alive!</p>
+        </div>
+        <div class="card mini-card">
+          <div class="card-label">📖 reading plan</div>
+          <p class="big-number"><span id="planPct">0</span><small>%</small></p>
+          <div class="progress"><div id="planBarMini" class="progress-fill"></div></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-label">✅ today’s reading</div>
+        <p id="todayReading" class="muted">—</p>
+        <button id="todayCheckBtn" class="btn btn-primary">I read today 📖</button>
+      </div>
+
+      <div class="card">
+        <div class="card-label">💛 quick gratitude</div>
+        <div class="inline-row">
+          <input id="quickGratInput" type="text" placeholder="Something you’re thankful for…">
+          <button id="quickGratBtn" class="btn btn-primary">Add</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- NOTES -->
+    <section id="tab-notes" class="tab-page hidden">
+      <div class="notes-toolbar">
+        <input id="searchInput" type="search" placeholder="🔍 Search notes, verses, thoughts…">
+        <button id="newNoteBtn" class="btn btn-primary">＋ New note</button>
+      </div>
+      <div id="tagChips" class="tag-chips"></div>
+      <div id="notesGrid" class="notes-grid"></div>
+      <p id="notesEmpty" class="empty-state hidden">No notes yet — plant your first verse! 🌱</p>
+    </section>
+
+    <!-- PRAYERS -->
+    <section id="tab-prayers" class="tab-page hidden">
+      <div class="card">
+        <div class="card-label">🙏 prayer list</div>
+        <div class="inline-row">
+          <input id="prayerInput" type="text" placeholder="What are you praying for?">
+          <button id="addPrayerBtn" class="btn btn-primary">Add</button>
+        </div>
+        <ul id="prayerList" class="check-list"></ul>
+        <p id="prayerEmpty" class="empty-state">No prayers yet — add your first one above 💜</p>
+      </div>
+    </section>
+
+    <!-- GRATITUDE -->
+    <section id="tab-gratitude" class="tab-page hidden">
+      <div class="card">
+        <div class="card-label">💛 gratitude jar</div>
+        <div class="inline-row">
+          <input id="gratInput" type="text" placeholder="Something good today…">
+          <button id="addGratBtn" class="btn btn-primary">Add</button>
+        </div>
+        <ul id="gratList" class="check-list"></ul>
+        <p id="gratEmpty" class="empty-state">Your gratitude jar is empty — drop something sweet in! 🍯</p>
+      </div>
+    </section>
+
+    <!-- READING PLAN -->
+    <section id="tab-plan" class="tab-page hidden">
+      <div class="card">
+        <div class="card-label">📖 30-day reading plan</div>
+        <p class="muted">John’s Gospel + favorite Psalms, one reading a day.</p>
+        <div class="progress"><div id="planBar" class="progress-fill"></div></div>
+        <p id="planText" class="muted">0 of 30 days done</p>
+        <ul id="planList" class="check-list plan-list"></ul>
+      </div>
+    </section>
+
+    <!-- SETTINGS -->
+    <section id="tab-settings" class="tab-page hidden">
+      <div class="card">
+        <div class="card-label">🎨 make it yours</div>
+        <p class="field-label">Theme</p>
+        <div id="themeSwatches" class="swatches"></div>
+        <p class="field-label">Custom accent color</p>
+        <input id="customColor" type="color" value="#a78bfa">
+        <p class="field-label">Font</p>
+        <select id="fontSelect">
+          <option value="Quicksand">Quicksand (round &amp; cute)</option>
+          <option value="Nunito">Nunito (soft &amp; friendly)</option>
+          <option value="Caveat">Caveat (handwritten)</option>
+        </select>
+        <p class="field-label">Background pattern</p>
+        <select id="patternSelect">
+          <option value="dots">Dots</option>
+          <option value="hearts">Hearts</option>
+          <option value="none">Plain</option>
+        </select>
+        <label class="toggle-row">
+          <span>🌙 Dark mode</span>
+          <input id="darkToggle" type="checkbox">
+        </label>
+      </div>
+
+      <div class="card">
+        <div class="card-label">💾 backup &amp; restore</div>
+        <div class="inline-row">
+          <button id="exportBtn" class="btn">⬇️ Export my data</button>
+          <button id="importBtn" class="btn">⬆️ Import data</button>
+          <input id="importFile" type="file" accept="application/json" class="hidden">
+        </div>
+        <p class="muted small">Export downloads everything (notes, prayers, gratitude, plan, theme) as a JSON file. Import restores it.</p>
+      </div>
+
+      <div class="card">
+        <div class="card-label">🌸 about</div>
+        <p class="muted small">Verse Garden — a cute little home for your verses, thoughts, prayers and gratitude. Made with 💜. Verses are fetched from bible-api.com (World English Bible). Works offline in local mode; sign in to sync across devices.</p>
+        <p id="accountLine" class="muted small"></p>
+      </div>
+    </section>
+
+    <!-- Bottom nav -->
+    <nav class="bottom-nav">
+      <button class="tab-btn active" data-tab="home">🏠<span>Home</span></button>
+      <button class="tab-btn" data-tab="notes">📝<span>Notes</span></button>
+      <button class="tab-btn" data-tab="prayers">🙏<span>Prayers</span></button>
+      <button class="tab-btn" data-tab="gratitude">💛<span>Thanks</span></button>
+      <button class="tab-btn" data-tab="plan">📖<span>Plan</span></button>
+      <button class="tab-btn" data-tab="settings">⚙️<span>Settings</span></button>
+    </nav>
+  </main>
+
+  <!-- ============ NOTE EDITOR MODAL ============ -->
+  <div id="noteModal" class="modal hidden">
+    <div class="modal-card">
+      <h2 id="noteModalTitle">New note 🌱</h2>
+      <input id="noteId" type="hidden">
+      <label class="field-label" for="noteTitle">Title</label>
+      <input id="noteTitle" type="text" placeholder="Give it a sweet title…">
+
+      <label class="field-label" for="verseRef">Verse reference</label>
+      <div class="inline-row">
+        <input id="verseRef" type="text" placeholder="e.g. John 3:16">
+        <button id="lookupBtn" class="btn">🔍 Look up</button>
+      </div>
+
+      <label class="field-label" for="verseText">Verse text</label>
+      <textarea id="verseText" rows="3" placeholder="The verse will appear here (or type it yourself)…"></textarea>
+
+      <label class="field-label" for="noteThoughts">Your thoughts</label>
+      <textarea id="noteThoughts" rows="3" placeholder="What does this verse mean to you? 💭"></textarea>
+
+      <label class="field-label" for="noteTags">Tags (comma separated)</label>
+      <input id="noteTags" type="text" placeholder="hope, comfort, morning">
+
+      <label class="field-label">Sticker</label>
+      <div id="stickerPicker" class="sticker-picker"></div>
+
+      <div class="modal-actions">
+        <button id="deleteNoteBtn" class="btn btn-danger hidden">🗑️ Delete</button>
+        <span class="spacer"></span>
+        <button id="closeNoteBtn" class="btn">Cancel</button>
+        <button id="saveNoteBtn" class="btn btn-primary">💾 Save note</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ SHARE MODAL ============ -->
+  <div id="shareModal" class="modal hidden">
+    <div class="modal-card share-card">
+      <h2>Share your verse 💌</h2>
+      <canvas id="shareCanvas" width="1080" height="1350"></canvas>
+      <div class="modal-actions">
+        <button id="closeShareBtn" class="btn">Close</button>
+        <button id="downloadShareBtn" class="btn btn-primary">⬇️ Download image</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <!-- Firebase (compat SDK) — only used when firebaseConfig below is filled in -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
