@@ -122,6 +122,7 @@ const LS_KEY = 'verseGarden.v1';
 const LS_VOTD = 'verseGarden.votd.v1';
 const LS_PIN = 'verseGarden.pin.v1';        // {salt, hash} — PIN hash only, never the PIN itself
 const LS_GIPHY = 'verseGarden.giphyKey.v1'; // GIPHY API key, this device only — never synced/exported
+const LS_BIBLE = 'verseGarden.bible.v1'; // last-read book + chapter, this device only
 
 const THEMES = {
   lavender: { name: 'Lavender 💜', accent: '#a78bfa', soft: '#ede9fe', bg: '#f5f0ff' },
@@ -510,6 +511,15 @@ function renderStreak() {
   $('homeStreak').textContent = s;
   $('homeStreakUnit').textContent = s === 1 ? 'day' : 'days';
 }
+/* Home hero: time-aware greeting + your name + today's date. */
+function renderHomeGreeting() {
+  const hour = new Date().getHours();
+  const part = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+  const name = (state.profile && state.profile.name) || '';
+  $('homeGreeting').textContent = part + ' 🌸';
+  $('homeNameLine').textContent = name ? 'Welcome back, ' + name : 'Welcome back';
+  $('homeDateLine').textContent = new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+}
 
 /* ------------------------- auth ------------------------- */
 let authMode = 'signin'; // or 'signup'
@@ -729,6 +739,139 @@ async function fetchVerse(ref) {
   throw new Error('Verse not found (' + errors.join('; ') + ')');
 }
 
+/* ------------------------- interactive Bible -------------------------
+   All 66 books with chapter counts, so the reader's pickers always offer
+   exactly the right chapters. `key` matches BOOK_NR (used for the KJV
+   getbible source); `name` is the display name used for the other two
+   sources. Chapters are fetched through the same 3 free sources as verse
+   lookups — no new APIs, no keys. Each source returns per-verse data,
+   so the reader can number every verse. */
+const BIBLE_BOOKS = [
+  { name: 'Genesis', key: 'genesis', chapters: 50, testament: 'OT' },
+  { name: 'Exodus', key: 'exodus', chapters: 40, testament: 'OT' },
+  { name: 'Leviticus', key: 'leviticus', chapters: 27, testament: 'OT' },
+  { name: 'Numbers', key: 'numbers', chapters: 36, testament: 'OT' },
+  { name: 'Deuteronomy', key: 'deuteronomy', chapters: 34, testament: 'OT' },
+  { name: 'Joshua', key: 'joshua', chapters: 24, testament: 'OT' },
+  { name: 'Judges', key: 'judges', chapters: 21, testament: 'OT' },
+  { name: 'Ruth', key: 'ruth', chapters: 4, testament: 'OT' },
+  { name: '1 Samuel', key: '1 samuel', chapters: 31, testament: 'OT' },
+  { name: '2 Samuel', key: '2 samuel', chapters: 24, testament: 'OT' },
+  { name: '1 Kings', key: '1 kings', chapters: 22, testament: 'OT' },
+  { name: '2 Kings', key: '2 kings', chapters: 25, testament: 'OT' },
+  { name: '1 Chronicles', key: '1 chronicles', chapters: 29, testament: 'OT' },
+  { name: '2 Chronicles', key: '2 chronicles', chapters: 36, testament: 'OT' },
+  { name: 'Ezra', key: 'ezra', chapters: 10, testament: 'OT' },
+  { name: 'Nehemiah', key: 'nehemiah', chapters: 13, testament: 'OT' },
+  { name: 'Esther', key: 'esther', chapters: 10, testament: 'OT' },
+  { name: 'Job', key: 'job', chapters: 42, testament: 'OT' },
+  { name: 'Psalms', key: 'psalm', chapters: 150, testament: 'OT' },
+  { name: 'Proverbs', key: 'proverbs', chapters: 31, testament: 'OT' },
+  { name: 'Ecclesiastes', key: 'ecclesiastes', chapters: 12, testament: 'OT' },
+  { name: 'Song of Solomon', key: 'song of solomon', chapters: 8, testament: 'OT' },
+  { name: 'Isaiah', key: 'isaiah', chapters: 66, testament: 'OT' },
+  { name: 'Jeremiah', key: 'jeremiah', chapters: 52, testament: 'OT' },
+  { name: 'Lamentations', key: 'lamentations', chapters: 5, testament: 'OT' },
+  { name: 'Ezekiel', key: 'ezekiel', chapters: 48, testament: 'OT' },
+  { name: 'Daniel', key: 'daniel', chapters: 12, testament: 'OT' },
+  { name: 'Hosea', key: 'hosea', chapters: 14, testament: 'OT' },
+  { name: 'Joel', key: 'joel', chapters: 3, testament: 'OT' },
+  { name: 'Amos', key: 'amos', chapters: 9, testament: 'OT' },
+  { name: 'Obadiah', key: 'obadiah', chapters: 1, testament: 'OT' },
+  { name: 'Jonah', key: 'jonah', chapters: 4, testament: 'OT' },
+  { name: 'Micah', key: 'micah', chapters: 7, testament: 'OT' },
+  { name: 'Nahum', key: 'nahum', chapters: 3, testament: 'OT' },
+  { name: 'Habakkuk', key: 'habakkuk', chapters: 3, testament: 'OT' },
+  { name: 'Zephaniah', key: 'zephaniah', chapters: 3, testament: 'OT' },
+  { name: 'Haggai', key: 'haggai', chapters: 2, testament: 'OT' },
+  { name: 'Zechariah', key: 'zechariah', chapters: 14, testament: 'OT' },
+  { name: 'Malachi', key: 'malachi', chapters: 4, testament: 'OT' },
+  { name: 'Matthew', key: 'matthew', chapters: 28, testament: 'NT' },
+  { name: 'Mark', key: 'mark', chapters: 16, testament: 'NT' },
+  { name: 'Luke', key: 'luke', chapters: 24, testament: 'NT' },
+  { name: 'John', key: 'john', chapters: 21, testament: 'NT' },
+  { name: 'Acts', key: 'acts', chapters: 28, testament: 'NT' },
+  { name: 'Romans', key: 'romans', chapters: 16, testament: 'NT' },
+  { name: '1 Corinthians', key: '1 corinthians', chapters: 16, testament: 'NT' },
+  { name: '2 Corinthians', key: '2 corinthians', chapters: 13, testament: 'NT' },
+  { name: 'Galatians', key: 'galatians', chapters: 6, testament: 'NT' },
+  { name: 'Ephesians', key: 'ephesians', chapters: 6, testament: 'NT' },
+  { name: 'Philippians', key: 'philippians', chapters: 4, testament: 'NT' },
+  { name: 'Colossians', key: 'colossians', chapters: 4, testament: 'NT' },
+  { name: '1 Thessalonians', key: '1 thessalonians', chapters: 5, testament: 'NT' },
+  { name: '2 Thessalonians', key: '2 thessalonians', chapters: 3, testament: 'NT' },
+  { name: '1 Timothy', key: '1 timothy', chapters: 6, testament: 'NT' },
+  { name: '2 Timothy', key: '2 timothy', chapters: 4, testament: 'NT' },
+  { name: 'Titus', key: 'titus', chapters: 3, testament: 'NT' },
+  { name: 'Philemon', key: 'philemon', chapters: 1, testament: 'NT' },
+  { name: 'Hebrews', key: 'hebrews', chapters: 13, testament: 'NT' },
+  { name: 'James', key: 'james', chapters: 5, testament: 'NT' },
+  { name: '1 Peter', key: '1 peter', chapters: 5, testament: 'NT' },
+  { name: '2 Peter', key: '2 peter', chapters: 3, testament: 'NT' },
+  { name: '1 John', key: '1 john', chapters: 5, testament: 'NT' },
+  { name: '2 John', key: '2 john', chapters: 1, testament: 'NT' },
+  { name: '3 John', key: '3 john', chapters: 1, testament: 'NT' },
+  { name: 'Jude', key: 'jude', chapters: 1, testament: 'NT' },
+  { name: 'Revelation', key: 'revelation', chapters: 22, testament: 'NT' }
+];
+async function fetchChapterFromBibleApi(book, chapter) {
+  const res = await fetch('https://bible-api.com/' + encodeURIComponent(book + ' ' + chapter));
+  if (!res.ok) throw new Error('bible-api: HTTP ' + res.status);
+  const data = await res.json();
+  let verses = (data.verses || [])
+    .map((v) => ({ n: v.verse, text: (v.text || '').trim() }))
+    .filter((v) => v.n != null && v.text);
+  if (!verses.length && data.text) {
+    // Fallback if a source ever drops the per-verse array: split the
+    // chapter text into lines and strip leading verse numbers.
+    verses = String(data.text).split('\n').map((l) => l.trim()).filter(Boolean).map((l, i) => {
+      const m = l.match(/^(\d+)\s+(.*)$/);
+      return m ? { n: +m[1], text: m[2].trim() } : { n: i + 1, text: l };
+    });
+  }
+  if (!verses.length) throw new Error('bible-api: no verses');
+  return { reference: data.reference || (book + ' ' + chapter), verses };
+}
+async function fetchChapterFromBibleOrg(book, chapter) {
+  const res = await fetch('https://labs.bible.org/api/?passage=' + encodeURIComponent(book + ' ' + chapter) + '&type=json');
+  if (!res.ok) throw new Error('bible.org: HTTP ' + res.status);
+  const data = await res.json();
+  if (!Array.isArray(data) || !data.length) throw new Error('bible.org: no verses');
+  const verses = data.map((v) => ({ n: +v.verse, text: (v.text || '').trim() })).filter((v) => v.text);
+  if (!verses.length) throw new Error('bible.org: no verses');
+  return { reference: data[0].bookname + ' ' + data[0].chapter, verses };
+}
+async function fetchChapterFromGetBible(book, chapter) {
+  const p = parseRef(book + ' ' + chapter);
+  const res = await fetch('https://api.getbible.net/v2/kjv/' + p.bookNr + '/' + p.chapter + '.json');
+  if (!res.ok) throw new Error('getbible: HTTP ' + res.status);
+  const data = await res.json();
+  const verses = (data.verses || [])
+    .map((v) => ({ n: v.verse, text: (v.text || '').trim() }))
+    .filter((v) => v.text);
+  if (!verses.length) throw new Error('getbible: no verses');
+  return { reference: data.book_name + ' ' + p.chapter, verses };
+}
+const CHAPTER_SOURCES = [
+  { name: 'bible-api', fetch: fetchChapterFromBibleApi },
+  { name: 'bible.org', fetch: fetchChapterFromBibleOrg },
+  { name: 'getbible', fetch: fetchChapterFromGetBible }
+];
+let chapterSourceCursor = 0;
+async function fetchChapter(book, chapter) {
+  const start = chapterSourceCursor++ % CHAPTER_SOURCES.length;
+  const errors = [];
+  for (let i = 0; i < CHAPTER_SOURCES.length; i++) {
+    const src = CHAPTER_SOURCES[(start + i) % CHAPTER_SOURCES.length];
+    try {
+      const out = await src.fetch(book, chapter);
+      if (out && out.verses && out.verses.length) return out;
+      throw new Error(src.name + ': empty chapter');
+    } catch (e) { errors.push(src.name + ': ' + (e.message || e)); }
+  }
+  throw new Error('Chapter not found (' + errors.join('; ') + ')');
+}
+
 /* ------------------------- verse of the day ------------------------- */
 function votdEntry() {
   const now = new Date();
@@ -870,6 +1013,7 @@ function renderNotes() {
     });
     grid.appendChild(card);
   });
+  $('homeNotesCount').textContent = state.notes.length;
 }
 function buildStickerPicker() {
   const wrap = $('stickerPicker');
@@ -984,6 +1128,7 @@ function renderPrayers() {
 function renderGratitude() {
   const list = $('gratList');
   list.innerHTML = '';
+  $('homeGratCount').textContent = state.gratitude.length;
   $('gratEmpty').classList.toggle('hidden', state.gratitude.length > 0);
   [...state.gratitude].sort((a, b) => b.createdAt - a.createdAt).forEach((g) => {
     const li = document.createElement('li');
@@ -1014,6 +1159,158 @@ function addGratitude(text) {
   recordActivity();
   renderGratitude();
 }
+
+/* ------------------------- interactive Bible reader ------------------------- */
+let bibleBook = 'john';
+let bibleChapter = 3;
+let bibleInitDone = false;
+let bibleRequestId = 0;
+let bibleSelectedVerse = null; // { ref, text } — the verse tapped in the reader
+function loadBiblePosition() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(LS_BIBLE) || 'null');
+    if (raw && BIBLE_BOOKS.some((b) => b.key === raw.book) && raw.chapter > 0) {
+      const book = BIBLE_BOOKS.find((b) => b.key === raw.book);
+      bibleBook = raw.book;
+      bibleChapter = Math.min(raw.chapter, book.chapters);
+    }
+  } catch (e) { /* ignore — defaults are John 3 */ }
+}
+function saveBiblePosition() {
+  try { localStorage.setItem(LS_BIBLE, JSON.stringify({ book: bibleBook, chapter: bibleChapter })); } catch (e) { /* ignore */ }
+}
+function buildBibleBookSelect() {
+  const sel = $('bibleBookSelect');
+  sel.innerHTML = '';
+  for (const testament of ['OT', 'NT']) {
+    const group = document.createElement('optgroup');
+    group.label = testament === 'OT' ? 'Old Testament' : 'New Testament';
+    for (const b of BIBLE_BOOKS.filter((x) => x.testament === testament)) {
+      const opt = document.createElement('option');
+      opt.value = b.key;
+      opt.textContent = b.name;
+      group.appendChild(opt);
+    }
+    sel.appendChild(group);
+  }
+  sel.value = bibleBook;
+}
+function buildBibleChapterSelect() {
+  const book = BIBLE_BOOKS.find((b) => b.key === bibleBook);
+  const sel = $('bibleChapterSelect');
+  sel.innerHTML = '';
+  for (let i = 1; i <= book.chapters; i++) {
+    const opt = document.createElement('option');
+    opt.value = i;
+    opt.textContent = 'Chapter ' + i;
+    sel.appendChild(opt);
+  }
+  sel.value = String(bibleChapter);
+}
+function renderBibleVerses(verses) {
+  const wrap = $('bibleVerses');
+  wrap.innerHTML = '';
+  verses.forEach((v) => {
+    const p = document.createElement('p');
+    p.className = 'bible-verse';
+    const num = document.createElement('sup');
+    num.className = 'bible-verse-num';
+    num.textContent = v.n;
+    const txt = document.createElement('span');
+    txt.textContent = v.text;
+    p.append(num, txt);
+    p.addEventListener('click', () => openVerseActions(v));
+    wrap.appendChild(p);
+  });
+}
+async function loadBibleChapter() {
+  const book = BIBLE_BOOKS.find((b) => b.key === bibleBook);
+  const label = book.name + ' ' + bibleChapter;
+  $('bibleRefLabel').textContent = label;
+  $('bibleVerses').innerHTML = '';
+  $('bibleError').classList.add('hidden');
+  $('bibleLoading').classList.remove('hidden');
+  const token = ++bibleRequestId; // ignore stale replies from fast tapping
+  try {
+    const out = await fetchChapter(book.name, bibleChapter);
+    if (token !== bibleRequestId) return;
+    renderBibleVerses(out.verses);
+  } catch (e) {
+    if (token !== bibleRequestId) return;
+    $('bibleError').textContent = "Couldn't load this chapter — check your connection and try again.";
+    $('bibleError').classList.remove('hidden');
+  } finally {
+    if (token === bibleRequestId) $('bibleLoading').classList.add('hidden');
+  }
+}
+function bibleStep(dir) {
+  const bi = BIBLE_BOOKS.findIndex((b) => b.key === bibleBook);
+  let bookIndex = bi;
+  let ch = bibleChapter + dir;
+  if (ch < 1) {
+    if (bookIndex <= 0) { toast('This is the very first chapter 📖'); return; }
+    bookIndex--;
+    ch = BIBLE_BOOKS[bookIndex].chapters;
+  } else if (ch > BIBLE_BOOKS[bookIndex].chapters) {
+    if (bookIndex >= BIBLE_BOOKS.length - 1) { toast('This is the very last chapter 📖'); return; }
+    bookIndex++;
+    ch = 1;
+  }
+  bibleBook = BIBLE_BOOKS[bookIndex].key;
+  bibleChapter = ch;
+  saveBiblePosition();
+  $('bibleBookSelect').value = bibleBook;
+  buildBibleChapterSelect();
+  loadBibleChapter();
+}
+function ensureBibleLoaded() {
+  if (bibleInitDone) return;
+  bibleInitDone = true;
+  loadBibleChapter();
+}
+function setBibleView(view) {
+  const read = view === 'read';
+  $('bibleReadTabBtn').classList.toggle('active', read);
+  $('biblePrayersTabBtn').classList.toggle('active', !read);
+  $('bibleReader').classList.toggle('hidden', !read);
+  $('biblePrayersPane').classList.toggle('hidden', read);
+  if (!read) renderPrayers();
+}
+/* Tap a verse → action sheet: save to notes / add to prayers / copy. */
+function openVerseActions(verse) {
+  const book = BIBLE_BOOKS.find((b) => b.key === bibleBook);
+  const ref = book.name + ' ' + bibleChapter + ':' + verse.n;
+  bibleSelectedVerse = { ref, text: verse.text };
+  $('verseActionRef').textContent = ref;
+  $('verseActionText').textContent = '"' + verse.text + '"';
+  $('verseActionModal').classList.remove('hidden');
+}
+function closeVerseActions() {
+  $('verseActionModal').classList.add('hidden');
+  bibleSelectedVerse = null;
+}
+async function copyText(t) {
+  try {
+    await navigator.clipboard.writeText(t);
+    return true;
+  } catch (e) {
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = t;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      return true;
+    } catch (e2) { return false; }
+  }
+}
+
+/* ------------------------- More bottom sheet ------------------------- */
+function openMore() { $('moreModal').classList.remove('hidden'); }
+function closeMore() { $('moreModal').classList.add('hidden'); }
 
 /* ------------------------- reading plan ------------------------- */
 function activePlan() {
@@ -1066,6 +1363,7 @@ function renderPlan() {
   $('planBar').style.width = pct + '%';
   $('planBarMini').style.width = pct + '%';
   $('planText').textContent = done + ' of ' + total + ' days done';
+  $('morePlanSub').textContent = plan.name + ' — ' + pct + '% done';
   $('planPct').textContent = pct;
   const firstOpen = plan.days.findIndex((p, i) => !doneMap[i]);
   $('todayReading').textContent = firstOpen === -1
@@ -1351,11 +1649,15 @@ function nearestTabBtn(x) {
 function positionNavLens(animate) {
   const nav = $('bottomNav');
   const lens = $('navLens');
-  const active = nav ? nav.querySelector('.tab-btn.active') : null;
-  if (!nav || !lens || !active) return;
+  if (!nav || !lens) return;
+  const active = nav.querySelector('.tab-btn.active');
   lens.style.transition = animate ? '' : 'none';
+  // Tabs that left the bottom bar (Thanks / Plan / Settings) have no
+  // nav button — hide the lens instead of stretching it nowhere.
+  if (!active) { lens.style.opacity = '0'; return; }
   lens.style.transform = 'translateX(' + active.offsetLeft + 'px)';
   lens.style.width = active.offsetWidth + 'px';
+  lens.style.opacity = '1';
 }
 function initNavSlide() {
   const nav = $('bottomNav');
@@ -1374,6 +1676,7 @@ function initNavSlide() {
     const lens = $('navLens');
     const w = lens.offsetWidth || 60;
     lens.style.transition = 'none';
+    lens.style.opacity = '1';
     lens.style.transform = 'translateX(' +
       Math.min(Math.max(x - w / 2, 10), rect.width - w - 10) + 'px)';
     const glow = $('navGlow');
@@ -1982,15 +2285,21 @@ function switchTab(name) {
     b.classList.toggle('active', b.dataset.tab === name));
   document.querySelectorAll('.tab-page').forEach((s) =>
     s.classList.toggle('hidden', s.id !== 'tab-' + name));
+  if (name === 'home') { renderHomeGreeting(); renderStreak(); renderPlan(); }
   if (name === 'plan') renderPlan();
   if (name === 'notes') { renderNotes(); renderTagChips(); }
   if (name === 'diary') renderDiary();
+  if (name === 'gratitude') renderGratitude();
+  if (name === 'prayers') { renderPrayers(); ensureBibleLoaded(); }
+  if (name === 'settings') renderSettings();
   positionNavLens(true);
+  window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 function renderAll() {
   applyTheme();
   buildPlanSelect();
   renderStreak();
+  renderHomeGreeting();
   renderVOTD();
   renderNotes();
   renderTagChips();
@@ -2038,6 +2347,77 @@ function initUI() {
 
   // Quick-add (+) in the middle of the bottom bar — straight to a new note.
   $('quickAddBtn').addEventListener('click', () => { nativeImpact('medium'); openNoteEditor(null); });
+
+  // Home hero cards — shortcuts to Plan and Thanks.
+  const goPlan = () => switchTab('plan');
+  const goGrat = () => switchTab('gratitude');
+  $('homePlanCard').addEventListener('click', goPlan);
+  $('homePlanCard').addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goPlan(); } });
+  $('homeGratCard').addEventListener('click', goGrat);
+  $('homeGratCard').addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goGrat(); } });
+
+  // More bottom sheet (header ⋯ button + Home "More" card).
+  $('moreBtn').addEventListener('click', openMore);
+  $('homeMoreBtn').addEventListener('click', openMore);
+  $('moreCloseBtn').addEventListener('click', closeMore);
+  $('moreModal').addEventListener('click', (e) => { if (e.target === $('moreModal')) closeMore(); });
+  document.querySelectorAll('.more-item').forEach((b) => {
+    b.addEventListener('click', () => {
+      const action = b.dataset.more;
+      closeMore();
+      if (action === 'gratitude') switchTab('gratitude');
+      else if (action === 'plan') switchTab('plan');
+      else if (action === 'settings') switchTab('settings');
+      else if (action === 'export') exportData();
+      else if (action === 'import') $('importFile').click();
+      else if (action === 'setup') openSetup();
+    });
+  });
+
+  // Interactive Bible reader (inside the Prayers tab).
+  loadBiblePosition();
+  buildBibleBookSelect();
+  buildBibleChapterSelect();
+  $('bibleBookSelect').addEventListener('change', (e) => {
+    bibleBook = e.target.value;
+    bibleChapter = 1;
+    saveBiblePosition();
+    buildBibleChapterSelect();
+    loadBibleChapter();
+  });
+  $('bibleChapterSelect').addEventListener('change', (e) => {
+    bibleChapter = +e.target.value;
+    saveBiblePosition();
+    loadBibleChapter();
+  });
+  $('biblePrevBtn').addEventListener('click', () => bibleStep(-1));
+  $('bibleNextBtn').addEventListener('click', () => bibleStep(1));
+  $('bibleReadTabBtn').addEventListener('click', () => setBibleView('read'));
+  $('biblePrayersTabBtn').addEventListener('click', () => setBibleView('prayers'));
+
+  // Verse action sheet — tap a Bible verse.
+  $('verseSaveBtn').addEventListener('click', () => {
+    if (!bibleSelectedVerse) return;
+    const v = bibleSelectedVerse;
+    closeVerseActions();
+    openNoteEditor(null);
+    $('verseRef').value = v.ref;
+    $('verseText').value = v.text;
+    $('noteTitle').value = v.ref;
+  });
+  $('versePrayBtn').addEventListener('click', () => {
+    if (!bibleSelectedVerse) return;
+    addPrayer(bibleSelectedVerse.ref + ' — "' + bibleSelectedVerse.text + '"');
+    closeVerseActions();
+    toast('Added to your prayers 🙏');
+  });
+  $('verseCopyBtn').addEventListener('click', async () => {
+    if (!bibleSelectedVerse) return;
+    const ok = await copyText(bibleSelectedVerse.ref + ' — "' + bibleSelectedVerse.text + '"');
+    toast(ok ? 'Verse copied 📋' : "Couldn't copy — long-press the verse instead");
+  });
+  $('verseActionCloseBtn').addEventListener('click', closeVerseActions);
+  $('verseActionModal').addEventListener('click', (e) => { if (e.target === $('verseActionModal')) closeVerseActions(); });
 
   // Diary
   $('newDiaryBtn').addEventListener('click', () => openDiaryEditor(null));
