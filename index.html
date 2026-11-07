@@ -129,6 +129,20 @@
       <p id="notesNoMatch" class="empty-state hidden">No notes match that search — try a different word 🔍</p>
     </section>
 
+    <!-- DIARY -->
+    <section id="tab-diary" class="tab-page hidden">
+      <div class="card diary-cover-card">
+        <div class="card-label">📔 my diary</div>
+        <div id="diaryCoverWrap" class="diary-cover-wrap"></div>
+        <button id="designCoverBtn" class="btn" style="margin-top: 12px;">🎨 Design cover</button>
+      </div>
+      <div class="notes-toolbar">
+        <button id="newDiaryBtn" class="btn btn-primary">＋ New entry</button>
+      </div>
+      <div id="diaryList" class="notes-grid"></div>
+      <p id="diaryEmpty" class="empty-state hidden">No entries yet — write your first one! ✍️</p>
+    </section>
+
     <!-- PRAYERS -->
     <section id="tab-prayers" class="tab-page hidden">
       <div class="card">
@@ -181,6 +195,11 @@
           <option value="Nunito">Nunito (soft &amp; friendly)</option>
           <option value="Caveat">Caveat (handwritten)</option>
         </select>
+        <p class="field-label">Text size</p>
+        <select id="textSizeSelect">
+          <option value="cozy">Cozy (comfy &amp; roomy)</option>
+          <option value="compact">Compact (smaller, fits more)</option>
+        </select>
         <p class="field-label">Background</p>
         <select id="backgroundSelect">
           <option value="dots">Dots</option>
@@ -207,6 +226,29 @@
       </div>
 
       <div class="card">
+        <div class="card-label">🔒 app passcode</div>
+        <p id="pinStatus" class="muted small">No passcode set — anyone who opens the app can read it.</p>
+        <p class="muted small">This is an in-app passcode, not your phone's lock screen — the web can't use that. Your PIN is stored only as a scrambled hash on this device, never as the number itself.</p>
+        <div class="inline-row">
+          <button id="setPinBtn" class="btn">🔑 Set passcode</button>
+          <button id="changePinBtn" class="btn hidden">✏️ Change passcode</button>
+          <button id="removePinBtn" class="btn btn-danger hidden">🚫 Turn off</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-label">✨ stickers</div>
+        <p class="muted small">Sticker search works out of the box with Openverse — no key needed. Want animated transparent stickers too? Add a free GIPHY key (optional upgrade):</p>
+        <label class="field-label" for="giphyKeyInput">GIPHY API key (optional)</label>
+        <input id="giphyKeyInput" type="password" placeholder="Paste your GIPHY key here" autocomplete="off">
+        <div class="inline-row" style="margin-top: 10px;">
+          <button id="giphyKeySaveBtn" class="btn">💾 Save key</button>
+          <button id="giphyKeyClearBtn" class="btn">🗑️ Remove key</button>
+        </div>
+        <p class="muted small">Get a free key at <a href="https://developers.giphy.com/" target="_blank" rel="noopener">developers.giphy.com</a> — it stays only on this device, never uploaded or synced.</p>
+      </div>
+
+      <div class="card">
         <div class="card-label">🌸 about</div>
         <p class="muted small">Verse Garden — a cute little home for your verses, thoughts, prayers and gratitude. Made with 💜. Verses are fetched from bible-api.com (World English Bible). Works offline in local mode; sign in to sync across devices.</p>
         <p id="accountLine" class="muted small"></p>
@@ -223,6 +265,8 @@
       <div class="nav-glow" id="navGlow" aria-hidden="true"></div>
       <button class="tab-btn active" data-tab="home">🏠<span>Home</span></button>
       <button class="tab-btn" data-tab="notes">📝<span>Notes</span></button>
+      <button class="tab-btn" data-tab="diary">📔<span>Diary</span></button>
+      <button class="quick-add-btn" id="quickAddBtn" title="Quick add a note" aria-label="Quick add a note">＋</button>
       <button class="tab-btn" data-tab="prayers">🙏<span>Prayers</span></button>
       <button class="tab-btn" data-tab="gratitude">💛<span>Thanks</span></button>
       <button class="tab-btn" data-tab="plan">📖<span>Plan</span></button>
@@ -296,11 +340,18 @@
         <h2>Pick a theme 🎨</h2>
         <p class="muted">Tap one — it changes live so you can see it!</p>
         <div id="setupThemes" class="swatches setup-swatches"></div>
+        <p class="field-label">Custom accent color</p>
+        <input id="setupAccent" type="color" value="#a78bfa">
         <p class="field-label">Font</p>
         <select id="setupFont">
           <option value="Quicksand">Quicksand (round &amp; cute)</option>
           <option value="Nunito">Nunito (soft &amp; friendly)</option>
           <option value="Caveat">Caveat (handwritten)</option>
+        </select>
+        <p class="field-label">Text size</p>
+        <select id="setupTextSize">
+          <option value="cozy">Cozy (comfy &amp; roomy)</option>
+          <option value="compact">Compact (smaller, fits more)</option>
         </select>
         <label class="toggle-row">
           <span>🌙 Dark mode</span>
@@ -326,6 +377,106 @@
         <button id="setupSkipBtn" class="link-btn" style="width:auto; margin:0;">Skip setup</button>
         <button id="setupNextBtn" class="btn btn-primary">Next →</button>
       </div>
+    </div>
+  </div>
+
+  <!-- ============ DIARY ENTRY MODAL ============ -->
+  <div id="diaryModal" class="modal hidden">
+    <div class="modal-card">
+      <h2 id="diaryModalTitle">New diary entry ✍️</h2>
+      <input id="diaryId" type="hidden">
+      <label class="field-label" for="diaryDate">Date</label>
+      <input id="diaryDate" type="date">
+      <label class="field-label" for="diaryTitle">Title (optional)</label>
+      <input id="diaryTitle" type="text" placeholder="A title for today…">
+      <label class="field-label">Mood</label>
+      <div id="diaryMoodPicker" class="mood-picker"></div>
+      <label class="field-label" for="diaryText">How was today?</label>
+      <textarea id="diaryText" rows="5" placeholder="Pour your heart out… 💭"></textarea>
+      <div class="modal-actions">
+        <button id="deleteDiaryBtn" class="btn btn-danger hidden">🗑️ Delete</button>
+        <span class="spacer"></span>
+        <button id="closeDiaryBtn" class="btn">Cancel</button>
+        <button id="saveDiaryBtn" class="btn btn-primary">💾 Save entry</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ COVER DESIGNER MODAL ============ -->
+  <div id="coverModal" class="modal hidden">
+    <div class="modal-card cover-card">
+      <h2>Design your diary cover 🎨</h2>
+      <p class="muted small">Tap a sticker to add it, then drag it around on the cover. Tap a placed sticker to resize or spin it.</p>
+      <div id="coverDesignerPreview" class="cover-preview-wrap"></div>
+
+      <label class="field-label" for="coverTitleInput">Cover title</label>
+      <input id="coverTitleInput" type="text" placeholder="e.g. My Diary" maxlength="24">
+
+      <label class="field-label">Cover background</label>
+      <div id="coverBgPicker" class="cover-bg-picker"></div>
+
+      <label class="toggle-row">
+        <span>✨ Glitter</span>
+        <input id="glitterToggle" type="checkbox">
+      </label>
+      <label class="field-label" for="glitterColor">Glitter color</label>
+      <input id="glitterColor" type="color" value="#fde047">
+
+      <label class="field-label">Built-in stickers</label>
+      <div id="coverStickerTray" class="sticker-picker"></div>
+
+      <label class="field-label" for="stickerSearchInput">Search real stickers</label>
+      <div class="inline-row">
+        <input id="stickerSearchInput" type="text" placeholder="e.g. flowers, hearts, stars…">
+        <button id="stickerSearchBtn" class="btn">🔍 Search</button>
+      </div>
+      <p id="stickerSearchHint" class="muted small">Searches Openverse — free photos &amp; illustrations, no key needed. Add a GIPHY key in Settings for animated transparent stickers.</p>
+      <div id="stickerSearchResults" class="sticker-results"></div>
+
+      <div id="coverStickerControls" class="cover-controls hidden">
+        <p class="field-label">Selected sticker</p>
+        <label class="field-label" for="coverStickerSize">Size</label>
+        <input id="coverStickerSize" type="range" min="24" max="140" value="64">
+        <label class="field-label" for="coverStickerRot">Spin</label>
+        <input id="coverStickerRot" type="range" min="-180" max="180" value="0">
+        <div class="inline-row" style="margin-top: 10px;">
+          <button id="coverStickerDeleteBtn" class="btn btn-danger">🗑️ Remove sticker</button>
+          <button id="coverStickerDoneBtn" class="btn">Done</button>
+        </div>
+      </div>
+
+      <div class="modal-actions">
+        <button id="closeCoverBtn" class="btn">Cancel</button>
+        <button id="saveCoverBtn" class="btn btn-primary">💾 Save cover</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ PASSCODE MODAL ============ -->
+  <div id="pinModal" class="modal hidden">
+    <div class="modal-card pin-card">
+      <h2 id="pinModalTitle">Set passcode</h2>
+      <p id="pinModalSub" class="muted"></p>
+      <div id="pinDots" class="pin-dots"><span></span><span></span><span></span><span></span></div>
+      <div id="pinPad" class="pin-pad"></div>
+      <p id="pinError" class="auth-error hidden"></p>
+      <div class="modal-actions">
+        <button id="pinCancelBtn" class="btn">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ LOCK SCREEN ============ -->
+  <div id="lockScreen" class="lock-screen hidden">
+    <div class="lock-card">
+      <img src="icons/icon-192.png" alt="Verse Garden" class="auth-logo">
+      <h2>Verse Garden</h2>
+      <p class="muted">Enter your passcode 🔒</p>
+      <div id="lockDots" class="pin-dots"><span></span><span></span><span></span><span></span></div>
+      <div id="lockPad" class="pin-pad"></div>
+      <p id="lockError" class="auth-error hidden"></p>
+      <button id="lockForgotBtn" class="link-btn">Forgot passcode? Reset app data</button>
+      <p class="muted small">This is an in-app passcode — the web can't use your phone's lock screen. Resetting erases notes on this device; if you're signed in, your synced data comes back when you sign in again.</p>
     </div>
   </div>
 
