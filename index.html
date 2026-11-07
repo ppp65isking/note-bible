@@ -69,12 +69,31 @@
       </div>
       <div class="header-actions">
         <span id="streakPill" class="streak-pill" title="Daily streak">🔥 <b id="streakCount">0</b></span>
+        <button id="moreBtn" class="icon-btn" title="More">⋯</button>
         <button id="signOutBtn" class="icon-btn" title="Sign out">🚪</button>
       </div>
     </header>
 
     <!-- HOME -->
     <section id="tab-home" class="tab-page">
+      <div class="card hero-card">
+        <p id="homeGreeting" class="hero-greeting">Good morning 🌸</p>
+        <h2 id="homeNameLine">Welcome back</h2>
+        <p id="homeDateLine" class="muted"></p>
+        <div class="hero-stats">
+          <div class="hero-stat">
+            <span class="hero-stat-num">🔥 <span id="homeStreak">0</span></span>
+            <span class="hero-stat-label"><span id="homeStreakUnit">days</span> streak</span>
+          </div>
+          <div class="hero-stat">
+            <span class="hero-stat-num">🌸 <span id="homeNotesCount">0</span></span>
+            <span class="hero-stat-label">notes in your garden</span>
+          </div>
+        </div>
+        <p id="todayReading" class="muted">—</p>
+        <button id="todayCheckBtn" class="btn btn-primary">I read today 📖</button>
+      </div>
+
       <div class="card votd-card">
         <div class="card-label">🌞 verse of the day</div>
         <p id="votdText" class="votd-text">Loading today's verse…</p>
@@ -83,22 +102,17 @@
       </div>
 
       <div class="row-2">
-        <div class="card mini-card">
-          <div class="card-label">🔥 streak</div>
-          <p class="big-number"><span id="homeStreak">0</span> <small id="homeStreakUnit">days</small></p>
-          <p class="muted">keep the flame alive!</p>
-        </div>
-        <div class="card mini-card">
+        <div class="card mini-card home-link-card" id="homePlanCard" role="button" tabindex="0">
           <div class="card-label">📖 reading plan</div>
           <p class="big-number"><span id="planPct">0</span><small>%</small></p>
           <div class="progress"><div id="planBarMini" class="progress-fill"></div></div>
+          <p class="muted small">Tap to open your plan →</p>
         </div>
-      </div>
-
-      <div class="card">
-        <div class="card-label">✅ today's reading</div>
-        <p id="todayReading" class="muted">—</p>
-        <button id="todayCheckBtn" class="btn btn-primary">I read today 📖</button>
+        <div class="card mini-card home-link-card" id="homeGratCard" role="button" tabindex="0">
+          <div class="card-label">💛 gratitude jar</div>
+          <p class="big-number"><span id="homeGratCount">0</span></p>
+          <p class="muted small">sweet moments saved — tap to open →</p>
+        </div>
       </div>
 
       <div class="card">
@@ -107,6 +121,12 @@
           <input id="quickGratInput" type="text" placeholder="Something you're thankful for…">
           <button id="quickGratBtn" class="btn btn-primary">Add</button>
         </div>
+      </div>
+
+      <div class="card more-card">
+        <div class="card-label">✨ more</div>
+        <p class="muted">Thanks, reading plan, settings, backup &amp; more — all in one place.</p>
+        <button id="homeMoreBtn" class="btn btn-primary btn-block">✨ More</button>
       </div>
     </section>
 
@@ -143,16 +163,42 @@
       <p id="diaryEmpty" class="empty-state hidden">No entries yet — write your first one! ✍️</p>
     </section>
 
-    <!-- PRAYERS -->
+    <!-- PRAYERS — an interactive Bible + the prayer list -->
     <section id="tab-prayers" class="tab-page hidden">
-      <div class="card">
-        <div class="card-label">🙏 prayer list</div>
-        <div class="inline-row">
-          <input id="prayerInput" type="text" placeholder="What are you praying for?">
-          <button id="addPrayerBtn" class="btn btn-primary">Add</button>
+      <div class="bible-switch">
+        <button id="bibleReadTabBtn" class="bible-switch-btn active" type="button">📖 Read</button>
+        <button id="biblePrayersTabBtn" class="bible-switch-btn" type="button">🙏 My prayers</button>
+      </div>
+
+      <div id="bibleReader">
+        <div class="card">
+          <div class="card-label">📖 interactive bible</div>
+          <div class="bible-pickers">
+            <select id="bibleBookSelect" aria-label="Book"></select>
+            <select id="bibleChapterSelect" aria-label="Chapter"></select>
+          </div>
+          <div class="bible-nav">
+            <button id="biblePrevBtn" class="btn" type="button">← Prev</button>
+            <span id="bibleRefLabel" class="bible-ref-label">John 3</span>
+            <button id="bibleNextBtn" class="btn" type="button">Next →</button>
+          </div>
+          <p id="bibleLoading" class="muted hidden">Loading chapter… 📖</p>
+          <p id="bibleError" class="auth-error hidden"></p>
+          <div id="bibleVerses" class="bible-verses"></div>
+          <p class="muted small">Tap any verse to save it to your notes, add it to your prayers, or copy it. Text: World English Bible, with KJV as a backup.</p>
         </div>
-        <ul id="prayerList" class="check-list"></ul>
-        <p id="prayerEmpty" class="empty-state">No prayers yet — add your first one above 💜</p>
+      </div>
+
+      <div id="biblePrayersPane" class="hidden">
+        <div class="card">
+          <div class="card-label">🙏 prayer list</div>
+          <div class="inline-row">
+            <input id="prayerInput" type="text" placeholder="What are you praying for?">
+            <button id="addPrayerBtn" class="btn btn-primary">Add</button>
+          </div>
+          <ul id="prayerList" class="check-list"></ul>
+          <p id="prayerEmpty" class="empty-state">No prayers yet — add your first one above 💜</p>
+        </div>
       </div>
     </section>
 
@@ -264,13 +310,10 @@
       <div class="nav-lens" id="navLens" aria-hidden="true"></div>
       <div class="nav-glow" id="navGlow" aria-hidden="true"></div>
       <button class="tab-btn active" data-tab="home">🏠<span>Home</span></button>
-      <button class="tab-btn" data-tab="notes">📝<span>Notes</span></button>
       <button class="tab-btn" data-tab="diary">📔<span>Diary</span></button>
       <button class="quick-add-btn" id="quickAddBtn" title="Quick add a note" aria-label="Quick add a note">＋</button>
+      <button class="tab-btn" data-tab="notes">📝<span>Notes</span></button>
       <button class="tab-btn" data-tab="prayers">🙏<span>Prayers</span></button>
-      <button class="tab-btn" data-tab="gratitude">💛<span>Thanks</span></button>
-      <button class="tab-btn" data-tab="plan">📖<span>Plan</span></button>
-      <button class="tab-btn" data-tab="settings">⚙️<span>Settings</span></button>
     </nav>
   </main>
 
@@ -367,7 +410,7 @@
 
       <div class="setup-step hidden" data-step="4">
         <h2>Pick a reading plan 📖</h2>
-        <p class="muted">One short reading a day. You can switch plans anytime in the Plan tab.</p>
+        <p class="muted">One short reading a day. You can switch plans anytime from Home → More → Reading plan.</p>
         <div id="setupPlans" class="setup-options"></div>
       </div>
 
@@ -477,6 +520,39 @@
       <p id="lockError" class="auth-error hidden"></p>
       <button id="lockForgotBtn" class="link-btn">Forgot passcode? Reset app data</button>
       <p class="muted small">This is an in-app passcode — the web can't use your phone's lock screen. Resetting erases notes on this device; if you're signed in, your synced data comes back when you sign in again.</p>
+    </div>
+  </div>
+
+  <!-- ============ MORE BOTTOM SHEET ============ -->
+  <div id="moreModal" class="modal hidden">
+    <div class="modal-card more-sheet">
+      <h2>More ✨</h2>
+      <p class="muted">Everything else in your garden.</p>
+      <div class="more-list">
+        <button class="more-item" data-more="gratitude" type="button">💛<span><b>Thanks</b><i>your gratitude jar</i></span><span class="more-arrow">›</span></button>
+        <button class="more-item" data-more="plan" type="button">📖<span><b>Reading plan</b><i id="morePlanSub">one reading a day</i></span><span class="more-arrow">›</span></button>
+        <button class="more-item" data-more="settings" type="button">⚙️<span><b>Settings</b><i>themes, passcode, stickers</i></span><span class="more-arrow">›</span></button>
+        <button class="more-item" data-more="export" type="button">💾<span><b>Export my data</b><i>download a backup</i></span><span class="more-arrow">›</span></button>
+        <button class="more-item" data-more="import" type="button">⬆️<span><b>Import data</b><i>restore a backup</i></span><span class="more-arrow">›</span></button>
+        <button class="more-item" data-more="setup" type="button">✨<span><b>Redo my setup</b><i>name, theme, background, plan</i></span><span class="more-arrow">›</span></button>
+      </div>
+      <div class="modal-actions">
+        <button id="moreCloseBtn" class="btn">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ VERSE ACTION SHEET (tap a Bible verse) ============ -->
+  <div id="verseActionModal" class="modal hidden">
+    <div class="modal-card verse-action-card">
+      <p id="verseActionRef" class="note-ref"></p>
+      <p id="verseActionText" class="note-verse"></p>
+      <div class="verse-action-btns">
+        <button id="verseSaveBtn" class="btn btn-primary btn-block" type="button">💾 Save to notes</button>
+        <button id="versePrayBtn" class="btn btn-block" type="button">🙏 Add to prayers</button>
+        <button id="verseCopyBtn" class="btn btn-block" type="button">📋 Copy verse</button>
+        <button id="verseActionCloseBtn" class="btn btn-block" type="button">Close</button>
+      </div>
     </div>
   </div>
 
