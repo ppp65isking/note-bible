@@ -119,6 +119,10 @@ jobs:
       # SHA-1 each time, which Firebase rejects for Google sign-in — so
       # the APK must be signed with this key, whose SHA-1 is registered
       # in Firebase. Never committed; no-op if the secret isn't set yet.
+      # NOTE: the keystore was made with openssl, which protects the
+      # store AND the key with the SAME password — so the store password
+      # is used for the key below too (there is no separate key
+      # password). The ANDROID_KEYSTORE_KEY_PASSWORD secret is unused.
       - name: Add signing keystore
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -133,16 +137,16 @@ jobs:
       - name: Build debug APK
         env:
           ANDROID_KEYSTORE_STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_STORE_PASSWORD }}
-          ANDROID_KEYSTORE_KEY_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_KEY_PASSWORD }}
         run: |
           cd android
           chmod +x gradlew
-          if [ -f app/verse-garden.keystore ] && [ -n "$ANDROID_KEYSTORE_STORE_PASSWORD" ] && [ -n "$ANDROID_KEYSTORE_KEY_PASSWORD" ]; then
+          if [ -f app/verse-garden.keystore ] && [ -n "$ANDROID_KEYSTORE_STORE_PASSWORD" ]; then
             ./gradlew assembleDebug \
               -Pandroid.injected.signing.store.file="$PWD/app/verse-garden.keystore" \
               -Pandroid.injected.signing.store.password="$ANDROID_KEYSTORE_STORE_PASSWORD" \
+              -Pandroid.injected.signing.store.type=pkcs12 \
               -Pandroid.injected.signing.key.alias=versegarden \
-              -Pandroid.injected.signing.key.password="$ANDROID_KEYSTORE_KEY_PASSWORD"
+              -Pandroid.injected.signing.key.password="$ANDROID_KEYSTORE_STORE_PASSWORD"
           else
             ./gradlew assembleDebug
           fi
