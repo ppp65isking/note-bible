@@ -284,10 +284,12 @@
         <div class="card-label">🔒 app passcode</div>
         <p id="pinStatus" class="muted small">No passcode set — anyone who opens the app can read it.</p>
         <p class="muted small">This is an in-app passcode, not your phone's lock screen — the web can't use that. Your PIN is stored only as a scrambled hash on this device, never as the number itself.</p>
+        <p id="bioStatus" class="muted small"></p>
         <div class="inline-row">
           <button id="setPinBtn" class="btn">🔑 Set passcode</button>
           <button id="changePinBtn" class="btn hidden">✏️ Change passcode</button>
           <button id="removePinBtn" class="btn btn-danger hidden">🚫 Turn off</button>
+          <button id="bioTestBtn" class="btn hidden">👆 Test fingerprint</button>
         </div>
       </div>
 
@@ -307,6 +309,7 @@
         <div class="card-label">🌸 about</div>
         <p class="muted small">Verse Garden — a cute little home for your verses, thoughts, prayers and gratitude. Made with 💜. Verses are fetched from bible-api.com (World English Bible). Works offline in local mode; sign in to sync across devices.</p>
         <p id="accountLine" class="muted small"></p>
+        <p id="shellLine" class="muted small"></p>
         <div class="inline-row" style="margin-top: 12px;">
           <button id="redoSetupBtn" class="btn">✨ Redo my setup</button>
         </div>

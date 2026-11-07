@@ -2437,6 +2437,41 @@ function refreshPinUI() {
   $('removePinBtn').classList.toggle('hidden', !on);
 }
 
+/* Fingerprint status line in Settings (passcode card) + which shell the
+   app is running in (About card). On the web/PWA there is no native
+   bridge, so fingerprint can't exist there — say so plainly instead of
+   leaving the user guessing why the button never appears. */
+function refreshBioUI() {
+  const bioStatus = $('bioStatus');
+  const bioBtn = $('bioTestBtn');
+  if (!bioStatus) return;
+  if (!IS_NATIVE) {
+    bioStatus.textContent = '👆 Fingerprint unlock needs the Android app — this is the web version, and the web can\'t reach your fingerprint. Open the installed Verse Garden app instead.';
+    if (bioBtn) bioBtn.classList.add('hidden');
+    return;
+  }
+  biometricAvailable().then((ok) => {
+    if (!ok) {
+      bioStatus.textContent = '👆 No fingerprint or face enrolled on this device (or the device has no lock). Enroll one in your phone settings to use it here.';
+      if (bioBtn) bioBtn.classList.add('hidden');
+      return;
+    }
+    bioStatus.textContent = pinStored()
+      ? '👆 Fingerprint is ready — it unlocks the app instead of your passcode.'
+      : '👆 Fingerprint is available — set an app passcode and your fingerprint will unlock the app.';
+    if (bioBtn) bioBtn.classList.remove('hidden');
+  });
+}
+function updateShellLine() {
+  const el = $('shellLine');
+  if (!el) return;
+  el.textContent = IS_NATIVE
+    ? 'Running as: Android app 📱 — fingerprint, haptics and the native splash all work here.'
+    : (IS_STANDALONE
+      ? 'Running as: installed web app (PWA) 🌐 — fingerprint unlock needs the Android app.'
+      : 'Running as: web app in a browser 🌐 — fingerprint unlock needs the Android app.');
+}
+
 /* Failed-passcode lockout: 5 wrong tries → 30-second cooldown, stored in
    localStorage so a reload doesn't clear it. */
 function getPinAttempts() {
@@ -2753,6 +2788,14 @@ function resetAppData() {
 }
 
 /* ------------------------- tabs & render-all ------------------------- */
+/* Refresh the Settings tab. (This was missing entirely — switchTab called
+   it on every Settings open and threw, so the lens never repositioned and
+   the settings UI never refreshed.) */
+function renderSettings() {
+  refreshPinUI();
+  refreshBioUI();
+  updateShellLine();
+}
 function switchTab(name) {
   document.querySelectorAll('.tab-btn').forEach((b) =>
     b.classList.toggle('active', b.dataset.tab === name));
@@ -2955,6 +2998,10 @@ function initUI() {
   $('setPinBtn').addEventListener('click', () => openPinModal('set'));
   $('changePinBtn').addEventListener('click', () => openPinModal('change'));
   $('removePinBtn').addEventListener('click', () => openPinModal('remove'));
+  $('bioTestBtn').addEventListener('click', async () => {
+    const ok = await tryNativeBiometric();
+    toast(ok ? 'Fingerprint works! 👆' : 'That didn\'t unlock — try again, or use your passcode.');
+  });
   // Fingerprint buttons: lock screen + passcode modal (native only — the
   // buttons stay hidden on the web, see showLockScreen / openPinModal).
   $('lockBioBtn').addEventListener('click', async () => {
