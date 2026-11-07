@@ -1,0 +1,77 @@
+name: Build Android APK
+
+# Builds the native Android app (Capacitor shell around the web app) and
+# uploads the installable APK as an artifact. Debug APK: installs directly
+# on a phone, no signing key needed for sideloading.
+# NOTE: the android/ native project is GENERATED in this workflow
+# (`npx cap add android`) and is NOT committed — it contains binary files
+# (gradle wrapper jar, launcher/splash PNGs) that can't go through the
+# text-based push path. The workflow regenerates it from the template
+# every run, then syncs the web files into it.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'index.html'
+      - 'app.js'
+      - 'styles.css'
+      - 'manifest.json'
+      - 'sw.js'
+      - 'icons/**'
+      - 'capacitor.config.json'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'scripts/build-www.mjs'
+      - '.github/workflows/build-apk.yml'
+  workflow_dispatch:
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        run: |
+          yes | sdkmanager --licenses
+          sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build web files into www/
+        run: npm run build:www
+
+      - name: Create Android project
+        run: npx cap add android
+
+      - name: Sync Capacitor Android project
+        run: npx cap sync android
+
+      - name: Build debug APK
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: verse-garden-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
