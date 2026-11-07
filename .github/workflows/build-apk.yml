@@ -28,6 +28,14 @@ on:
 jobs:
   build-apk:
     runs-on: ubuntu-latest
+    # The runner image already ships an Android SDK (ANDROID_HOME is set by
+    # default). Do NOT use android-actions/setup-android@v3: it internally
+    # runs `sdkmanager tools`, and the obsolete "tools" package no longer
+    # exists, so it fails (build #1 died in 26s on that step). We install
+    # the packages we need explicitly below.
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
     steps:
       - uses: actions/checkout@v4
 
@@ -43,11 +51,9 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
       - name: Install Android SDK packages
         run: |
+          export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/cmdline-tools/16.0/bin:$PATH"
           yes | sdkmanager --licenses
           sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"
 
