@@ -665,7 +665,13 @@ async function handleGoogleSignIn() {
     const fedcm = await tryFedcmGoogleSignIn();
     if (fedcm === 'signed-in') return;
     if (fedcm === 'error') return; // error already shown to the user
-    // 'unavailable' → fall through to the browser sheet below.
+    // 'unavailable' (FedCM off, no Google session, origin not ready) —
+    // don't leave the button looking dead: open the browser tab straight
+    // away, where the redirect flow is the verified-working path, and
+    // show the note too so there's always a visible way forward if the
+    // tab gets blocked.
+    toast('Opening your browser to sign in… 🌷');
+    openBrowserSignIn();
   }
   showBrowserSigninNote();
 }
