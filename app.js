@@ -50,6 +50,73 @@ if (FIREBASE_READY) {
   }
 }
 
+/* ------------------------- Capacitor (native Android shell) -------------------------
+   When the app runs inside the native Android app, the Capacitor runtime
+   injects window.Capacitor into the WebView. On the web (GitHub Pages) it
+   doesn't exist — so EVERY native call below is guarded by IS_NATIVE and
+   the web build is completely untouched. Native-only features:
+   fingerprint/face unlock, haptics, status-bar tint, splash screen. */
+const CAP = (typeof window !== 'undefined' && window.Capacitor) || null;
+const IS_NATIVE = !!(CAP && typeof CAP.getPlatform === 'function' && CAP.getPlatform() !== 'web');
+const _nativePlugins = {};
+function nativePlugin(name) {
+  if (!IS_NATIVE || !CAP || typeof CAP.registerPlugin !== 'function') return null;
+  if (!_nativePlugins[name]) {
+    try { _nativePlugins[name] = CAP.registerPlugin(name); }
+    catch (e) { return null; }
+  }
+  return _nativePlugins[name];
+}
+/* Light haptic tap — native only, silent no-op on the web. */
+function nativeImpact(style) {
+  const h = nativePlugin('Haptics');
+  if (!h) return;
+  try {
+    const p = h.impact({ style: style || 'light' });
+    if (p && p.catch) p.catch(() => { /* haptics unavailable */ });
+  } catch (e) { /* ignore */ }
+}
+/* Native biometric unlock (fingerprint / face). Returns true on success.
+   Falls back to the device PIN / pattern / password when the user taps it
+   (allowDeviceCredential), and offers it even when no biometry is enrolled
+   as long as the device itself is secured. False on cancel or failure. */
+async function tryNativeBiometric() {
+  const bio = nativePlugin('BiometricAuthNative');
+  if (!bio) return false;
+  try {
+    const info = await bio.checkBiometry();
+    if (!info || (!info.isAvailable && !info.deviceIsSecure)) return false;
+    await bio.authenticate({
+      reason: 'Unlock Verse Garden',
+      cancelTitle: 'Use passcode',
+      allowDeviceCredential: true,
+      androidTitle: 'Unlock Verse Garden',
+      androidSubtitle: 'Use your fingerprint or face to open your notes',
+      androidConfirmationRequired: false,
+    });
+    return true;
+  } catch (e) { return false; }
+}
+/* Status-bar tint follows the theme accent (native only). */
+function nativeStatusBar() {
+  const sb = nativePlugin('StatusBar');
+  if (!sb) return;
+  try {
+    const p = sb.setBackgroundColor({ color: currentColors().accent });
+    if (p && p.catch) p.catch(() => { /* ignore */ });
+  } catch (e) { /* ignore */ }
+}
+/* Hide the launch splash once the app has rendered (native only).
+   The splash is configured launchAutoHide:false so it stays up until here. */
+function nativeSplashHide() {
+  const sp = nativePlugin('SplashScreen');
+  if (!sp) return;
+  try {
+    const p = sp.hide();
+    if (p && p.catch) p.catch(() => { /* already hidden */ });
+  } catch (e) { /* ignore */ }
+}
+
 /* ------------------------- constants ------------------------- */
 const LS_KEY = 'verseGarden.v1';
 const LS_VOTD = 'verseGarden.votd.v1';
@@ -398,6 +465,7 @@ function applyTheme() {
   document.querySelectorAll('#setupThemes .swatch').forEach((b) => {
     b.classList.toggle('active', b.dataset.preset === state.theme.preset && !state.theme.customAccent);
   });
+  nativeStatusBar(); // native shell: tint the Android status bar to match the theme
 }
 function buildThemeSwatches() {
   const wrap = $('themeSwatches');
@@ -1307,7 +1375,7 @@ function initNavSlide() {
     const w = lens.offsetWidth || 60;
     lens.style.transition = 'none';
     lens.style.transform = 'translateX(' +
-      Math.min(Math.max(x - w / 2, 4), rect.width - w - 4) + 'px)';
+      Math.min(Math.max(x - w / 2, 10), rect.width - w - 10) + 'px)';
     const glow = $('navGlow');
     glow.style.opacity = '1';
     glow.style.transform = 'translate(' + (x - 32) + 'px, -50%)';
@@ -1748,7 +1816,7 @@ function clearPin() {
 function refreshPinUI() {
   const on = !!pinStored();
   $('pinStatus').textContent = on
-    ? '🔒 Passcode is on — the app asks for it every time it opens.'
+    ? '🔒 Passcode is on — the app asks for it every time it opens.' + (IS_NATIVE ? ' On this device, your fingerprint or face unlocks it too.' : '')
     : 'No passcode set — anyone who opens the app can read it.';
   $('setPinBtn').classList.toggle('hidden', on);
   $('changePinBtn').classList.toggle('hidden', !on);
@@ -1805,6 +1873,16 @@ function buildPinPad(padEl, dotsEl, onComplete) {
 function showLockScreen() {
   $('lockScreen').classList.remove('hidden');
   $('lockError').classList.add('hidden');
+  // Native shell: try fingerprint / face first — the PIN pad underneath
+  // stays as the fallback (and is already there if biometry is cancelled).
+  if (IS_NATIVE) {
+    tryNativeBiometric().then((ok) => {
+      if (ok) {
+        $('lockScreen').classList.add('hidden');
+        toast('Welcome back! 🌷');
+      }
+    });
+  }
   buildPinPad($('lockPad'), $('lockDots'), async (pin) => {
     if (await verifyPin(pin)) {
       $('lockScreen').classList.add('hidden');
@@ -1956,10 +2034,10 @@ function initPWA() {
 /* ------------------------- wire up UI ------------------------- */
 function initUI() {
   document.querySelectorAll('.tab-btn').forEach((b) =>
-    b.addEventListener('click', () => switchTab(b.dataset.tab)));
+    b.addEventListener('click', () => { nativeImpact('light'); switchTab(b.dataset.tab); }));
 
   // Quick-add (+) in the middle of the bottom bar — straight to a new note.
-  $('quickAddBtn').addEventListener('click', () => openNoteEditor(null));
+  $('quickAddBtn').addEventListener('click', () => { nativeImpact('medium'); openNoteEditor(null); });
 
   // Diary
   $('newDiaryBtn').addEventListener('click', () => openDiaryEditor(null));
@@ -2219,6 +2297,7 @@ initAuth();
 initUI();
 initPWA();
 maybeLockOnLaunch(); // passcode set? PIN pad first, before any content
+nativeSplashHide(); // native shell: dismiss the launch splash now the app has rendered
 
 // No Firebase config yet (or Firebase failed) → straight into local mode.
 if (!auth) {
